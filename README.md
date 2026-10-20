@@ -229,19 +229,6 @@ It works on my machine. This is what has and hasn't been tried there.
 </details>
 
 <details>
-<summary><b>How this was made</b></summary>
-
-cilly was written with Claude Code, with a person deciding what it does, setting its security rules and testing it on a real PC. So don't take its safety on faith:
-
-- **Over 950 automated tests** (`python3 -m unittest`), many against a fake QEMU that plays a hostile VM: spoofed messages, planted symlinks, path escapes and tampered memory exports.
-- **Security reviews** of the code, each finding fixed with a test that keeps it fixed.
-- **The web UI checked in a real browser**, at desktop and phone sizes.
-
-It hasn't had an independent security audit yet. Reports are welcome, see [SECURITY.md](SECURITY.md).
-
-</details>
-
-<details>
 <summary><b>Requirements</b></summary>
 
 - Linux on x86_64 with KVM (`/dev/kvm`). Arch, Debian, Ubuntu, Fedora and openSUSE get their packages from `install.sh`. Other distributions work too if you install the packages yourself.
