@@ -2,7 +2,7 @@
 
 Claude Code agents in their own virtual machines, on your own Linux PC, started as your normal user. Give an agent a task in a chat. It works in a QEMU/KVM virtual machine that only reaches the sites you allowed, pushes to its own branch and opens a draft pull request.
 
-**[Docs](docs/guide.md) · [Quick start](#quick-start) · [Security model](#security-model) · [Status](#status)**
+**[Website and docs](https://cillybox.github.io) · [Guide](docs/guide.md) · [Quick start](#quick-start) · [Security model](#security-model) · [Status](#status)**
 
 [![Tests](https://github.com/cillybox/cilly/actions/workflows/test.yml/badge.svg)](https://github.com/cillybox/cilly/actions/workflows/test.yml) <img src="docs/images/badge-python.svg" alt="Python standard library only"> <img src="docs/images/badge-platform.svg" alt="Runs on Linux with KVM"> <img src="docs/images/badge-license.svg" alt="GPL-3.0">
 
