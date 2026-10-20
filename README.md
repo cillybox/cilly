@@ -97,6 +97,33 @@ The [guide](docs/guide.md) has the details behind each point.
 </details>
 
 <details>
+<summary><b>The security core</b></summary>
+
+The protections above rest on a small part of cilly. If you want to check it before you run it, read these first:
+
+| Part | Files | What it does |
+|---|---|---|
+| The VM | `cilly/vm.py`, `cilly/base_image.py`, `cilly/debian_image.py` | Builds the images, starts QEMU inside bubblewrap, and hides secrets in what a VM sends back |
+| The way out | `cilly/egress_proxy.py`, `cilly/relay.py`, `cilly/tlsca.py` | The allowlist, the stand-in tokens and the rules for GitHub |
+| The panel | `cilly/server.py`, `cilly/launch.py` | The token, Host and Origin checks, and what a paired device may do |
+| Files in and out | `cilly/inject.py`, `cilly/memory.py`, `cilly/exports.py`, `cilly/handoff.py`, `cilly/filecheck.py`, `cilly/projects.py` | Everything that moves files between your PC and a VM |
+| Inside the VM | `cilly/guest/cilly-runner.py` | Runs each task as the unprivileged agent user |
+| Setup | `cilly/install.sh` | The one-time setup that runs as root |
+
+The rest is optional, and off until you set it up:
+
+- Routes through a proxy, a WireGuard VPN or Tor.
+- Local models, and SSH tunnels to them.
+- A paired phone, which also needs a reverse proxy you run.
+- Voice input, once you give it a whisper.cpp server.
+- Research agents, MCP servers, plugins and skills, which do nothing until you create or pick them.
+- Toolchains such as Ghidra, only in images you build with them.
+
+None of them gets around the core. An agent that uses one still runs in its VM, and its traffic still goes through the same proxy and allowlist.
+
+</details>
+
+<details>
 <summary><b>See it in action</b></summary>
 
 <table>
