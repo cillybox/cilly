@@ -267,6 +267,29 @@ class TokenTests(unittest.TestCase):
         self.ask(p, "api.anthropic.com", self.req("GET", "api.anthropic.com", "/v1/models", [("Authorization", f"Bearer {GH}")]))
         self.assertIn(f"Authorization: Bearer {GH_REAL}", self.sent())
 
+    def test_github_never_gets_a_login_the_agent_brought(self):
+        """A token an agent picked up from something it read can't push your code to someone else's
+        repository or make a gist: on GitHub it's only ever the bot, or nobody."""
+        p = self.proxy()
+        theirs = "ghp_ATTACKERATTACKERATTACKERATTACKER1"
+        basic = base64.b64encode(f"x-access-token:{theirs}".encode()).decode()
+        self.ask(p, "github.com", self.req("POST", "github.com", "/attacker/loot.git/git-receive-pack",
+                                           [("Authorization", f"Basic {basic}"), ("Content-Length", "4")], b"0000"))
+        self.assertNotIn("Authorization", self.sent())
+        self.ask(p, "github.com", self.req("GET", "github.com", "/settings", [("Cookie", "user_session=theirs")]))
+        self.assertNotIn("Cookie", self.sent())
+        for header in ("Authorization", "x-api-key"):
+            self.ask(p, "api.github.com", self.req("POST", "api.github.com", "/gists",
+                                                   [(header, f"token {theirs}"), ("Content-Length", "2")], b"{}"))
+            self.assertNotIn(theirs, self.sent(), header)
+        with open(os.path.join(self.tmp.name, "egress.log")) as f:
+            self.assertIn('"dropped_login": true', f.read())
+        self.ask(p, "api.github.com", self.req("GET", "api.github.com", "/repos/owner/repo",
+                                               [("Authorization", f"token {GH}"), ("User-Agent", "gh")]))
+        self.assertIn(f"Authorization: token {GH_REAL}", self.sent())  # its own stand-in still works
+        self.ask(p, "api.anthropic.com", self.req("GET", "api.anthropic.com", "/v1/models", [("Authorization", "Bearer sk-ant-own")]))
+        self.assertIn("Authorization: Bearer sk-ant-own", self.sent())  # other token hosts as before
+
     def test_a_token_goes_only_in_a_login_header(self):
         p = self.proxy()
         basic = base64.b64encode(f"x-access-token:{CLAUDE}".encode()).decode()

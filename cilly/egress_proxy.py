@@ -1488,7 +1488,7 @@ class Proxy:
             raise ValueError("a request cilly can't frame safely")
         if [v.lower() for n, v in lower if n == "host"] not in ([host], [f"{host}:443"]):
             raise ValueError("the Host header doesn't name the site")
-        out, used, push, written = [], False, None, []
+        out, used, push, written, foreign = [], False, None, [], False
         if model is not None:
             path = target.split("?", 1)[0]
             messages = path == "/v1/messages"
@@ -1507,9 +1507,11 @@ class Proxy:
             if low in _DROP or (model is not None and (low in TOKEN_HEADERS or low == "host")):
                 continue  # to a model server: its own key, or none, never what the VM sent
             auth = low in TOKEN_HEADERS
+            ours = False
             for t in tokens["tokens"]:
                 if value is None or _swap(value, t["stand_in"], None, basic=auth) == value:
                     continue  # not in this header (in a login header: not even inside a Basic login)
+                ours = True
                 ok = auth and token_allowed(t, host, method, target)  # a real token only in a login header
                 value = _swap(value, t["stand_in"], t["value"] if ok else None, basic=auth)
                 used = used or ok
@@ -1517,6 +1519,9 @@ class Proxy:
                     written.append(value)  # what we wrote is masked too, should a site echo it back
                 if ok and t.get("github") and t["github"]["push"] is not None:
                     push = t["github"]["push"]
+            if value is not None and not ours and host in GITHUB_HOSTS and (auth or low == "cookie"):
+                foreign = True
+                continue  # GitHub sees an agent only as the bot, never with a login it brought itself
             if value is not None:
                 out.append((name, value))
         is_push = method == "POST" and target.split("?", 1)[0].endswith("/git-receive-pack")
@@ -1569,7 +1574,8 @@ class Proxy:
                 up.sendall((b"%x\r\n%s\r\n" % (len(piece), piece)) if te else piece)
         if te:
             up.sendall(b"0\r\n\r\n")
-        self.log(action="request", host=host, method=method, path=target.split("?", 1)[0][:200], token=used)
+        self.log(action="request", host=host, method=method, path=target.split("?", 1)[0][:200], token=used,
+                 **({"dropped_login": True} if foreign else {}))
         if not creates:
             return self._reply(up, tls, tokens, written, method)
         tap = bytearray()
