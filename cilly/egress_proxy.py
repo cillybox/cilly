@@ -862,6 +862,9 @@ _CHANGES_REFS = re.compile(r"|/git/refs(?:/.*)?|/contents(?:/.*)?|/merges|/merge
                            r"|/releases(?:/.*)?|/branches(?:/.*)?|/tags(?:/.*)?|/rulesets(?:/.*)?|/transfer")
 
 
+GITHUB_HOSTS = ("github.com", "api.github.com")
+
+
 def token_allowed(token: dict, host: str, method: str, target: str) -> bool:
     """Whether this token may go with this request.  A GitHub token goes only with the agent's own
     repository (git, and the REST API), GraphQL (gh needs it), /user and /rate_limit."""
@@ -869,7 +872,7 @@ def token_allowed(token: dict, host: str, method: str, target: str) -> bool:
         return False
     g = token.get("github")
     if not g:
-        return True
+        return host not in GITHUB_HOSTS  # to GitHub, only a token held to the agent's repository
     path = target.split("?", 1)[0]
     if _TRICKY_PATH.search(path):
         return False

@@ -252,6 +252,21 @@ class TokenTests(unittest.TestCase):
                                                    [("Authorization", f"token {GH}"), ("Content-Length", "2")], b"{}"))
             self.assertNotIn("Authorization", self.sent(), method)
 
+    def test_github_never_gets_a_token_that_isnt_held_to_a_repository(self):
+        """An entry without its repository (none of cilly's own has one) goes nowhere on GitHub,
+        while a key without GitHub limits still goes to its other hosts."""
+        self.write_tokens(tokens=[{"stand_in": GH, "value": GH_REAL, "hosts": ["github.com", "api.github.com", "api.anthropic.com"]}])
+        p = self.proxy()
+        basic = base64.b64encode(f"x-access-token:{GH}".encode()).decode()
+        self.ask(p, "github.com", self.req("GET", "github.com", "/owner/repo.git/info/refs?service=git-upload-pack",
+                                           [("Authorization", f"Basic {basic}")]))
+        self.assertNotIn("Authorization", self.sent())
+        for path in ("/repos/owner/repo", "/user", "/gists"):
+            self.ask(p, "api.github.com", self.req("GET", "api.github.com", path, [("Authorization", f"token {GH}")]))
+            self.assertNotIn("Authorization", self.sent(), path)
+        self.ask(p, "api.anthropic.com", self.req("GET", "api.anthropic.com", "/v1/models", [("Authorization", f"Bearer {GH}")]))
+        self.assertIn(f"Authorization: Bearer {GH_REAL}", self.sent())
+
     def test_a_token_goes_only_in_a_login_header(self):
         p = self.proxy()
         basic = base64.b64encode(f"x-access-token:{CLAUDE}".encode()).decode()
