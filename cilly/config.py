@@ -476,6 +476,9 @@ _VAR_RE = re.compile(r"\$\{([A-Z][A-Z0-9_]{0,63})(?::-[^}]*)?\}")
 MCP_NAME = re.compile(r"^[A-Za-z0-9_-]{1,48}$")
 _RESERVED_VARS = {"GH_TOKEN", "GITHUB_TOKEN", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN",
                   "HTTPS_PROXY", "HTTP_PROXY", "PATH", "HOME"}
+# The GitHub token goes only to an agent with a repository, held to that repository (tokens).
+# As an agent type's or research agents' own secret it would go to every such agent, without those limits.
+GITHUB_VARS = ("GH_TOKEN", "GITHUB_TOKEN")
 
 
 def mcp_vars(server: dict) -> list[str]:
@@ -729,6 +732,8 @@ def validate(cfg: dict) -> None:
     for sn, ref in cfg["research"].get("secrets", {}).items():
         if not re.match(r"^[A-Z][A-Z0-9_]{0,63}$", sn):
             raise ValueError(f"research: bad secret env name {sn!r}")
+        if sn in GITHUB_VARS:
+            raise ValueError(f"research.secrets: research agents never get a GitHub token, so {sn} can't be one of their secrets")
         _check_secret_ref(ref, f"research.secrets.{sn}")
     for k in ("preamble", "coding_hint"):
         if not isinstance(cfg["research"].get(k, ""), str):
@@ -754,6 +759,9 @@ def validate(cfg: dict) -> None:
         for sname, ref in a.get("secrets", {}).items():
             if not re.match(r"^[A-Z][A-Z0-9_]{0,63}$", sname):
                 raise ValueError(f"agents.{name}: bad secret env name {sname!r}")
+            if sname in GITHUB_VARS:
+                raise ValueError(f"agents.{name}.secrets: {sname} is set by cilly, only for an agent with a repository. "
+                                 "Add the token under tokens instead")
             _check_secret_ref(ref, f"agents.{name}.secrets.{sname}")
         normalize_allowlist(a.get("egress_extra", []))
     ident = cfg["identity"]

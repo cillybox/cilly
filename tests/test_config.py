@@ -195,6 +195,19 @@ class ConfigTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             C.validate(c)
 
+    def test_the_github_token_is_never_an_agent_types_own_secret(self):
+        """Every agent of that kind would get it, those without a repository too, and the proxy
+        would let it go with any request to GitHub."""
+        for name in ("GH_TOKEN", "GITHUB_TOKEN"):
+            c = self.cfg()
+            c["agents"]["claude"]["secrets"][name] = {}
+            with self.assertRaisesRegex(ValueError, f"agents.claude.secrets: {name} is set by cilly"):
+                C.validate(c)
+            c = self.cfg()
+            c["research"]["secrets"][name] = {}
+            with self.assertRaisesRegex(ValueError, "research agents never get a GitHub token"):
+                C.validate(c)
+
     def test_secret_command_must_be_argv(self):
         c = self.cfg()
         c["panel_token"]["secret"] = {"command": "pass show x"}
