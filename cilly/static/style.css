@@ -483,7 +483,6 @@ details.adv > summary::-webkit-details-marker { display: none; }
 .composer .bottom { display: flex; align-items: center; gap: 6px 10px; }  /* chips on the left (they wrap among themselves), the buttons stay on the right */
 .composer .chips { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .composer .acts { flex: none; max-width: 100%; display: flex; align-items: center; gap: 6px; margin-left: auto; }
-.composer .rec { font-size: round(calc(13px * var(--text-scale)), var(--text-step)); color: var(--err-text); min-width: 0; }
 .round { width: 34px; height: 34px; border-radius: 50%; border: 0; background: transparent; color: var(--fg-3); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-size: round(calc(18px * var(--text-scale)), var(--text-step)); flex: none; }
 .round:hover { background: var(--surface-2); color: var(--fg); }
 .round.send { background: var(--fg); color: var(--on-fg); font-size: round(calc(16px * var(--text-scale)), var(--text-step)); font-weight: 600; }

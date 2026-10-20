@@ -1394,6 +1394,16 @@ class UiTests(unittest.TestCase):
         """)
         self.assertEqual(got, [["Stop this task", False], ["Queue ↑", True], ["Queue ↑", True], ["Queue ↑", False], ["Stop this task", False]])
 
+    def test_recording_shows_no_running_text(self):
+        """The red mic says it's recording. No "Recording for 2 s" line crowds the chips on a phone."""
+        got = self.run_js(self.COMPOSER + r"""
+          VOICE.on = true; VOICE.area = AV.c.ta; AV.c.mic.onVoice();
+          const walk = (n, f) => n instanceof Node && (f(n) || n.kids.some((k) => walk(k, f)));
+          const box = AV.c.box;
+          console.log(JSON.stringify([walk(box, (n) => n.className.split(" ").includes("rec")), /Recording|Transcribing/.test(box.textContent), "rec" in AV.c]));
+        """)
+        self.assertEqual(got, [False, False, False])
+
     def test_a_file_alone_can_be_sent(self):
         got = self.run_js(self.COMPOSER + r"""
           const btn = () => AV.c.send.kids[0];
@@ -1854,15 +1864,15 @@ class UiTests(unittest.TestCase):
           const live = () => tracks.filter((t) => t.live).length;
           const tick = () => new Promise((r) => setTimeout(r, 20));
           const out = [];
-          const ta1 = box(), b1 = micButton(ta1, null, null, "agent:a1");
+          const ta1 = box(), b1 = micButton(ta1, null, "agent:a1");
           b1.fire("click"); b1.fire("click"); await tick();  // a double click opens the microphone once
           out.push([asked, live(), VOICE.on]);
           gone(ta1);  // the box is drawn again: the new one takes over
-          const ta2 = box(), b2 = micButton(ta2, null, null, "agent:a1");
+          const ta2 = box(), b2 = micButton(ta2, null, "agent:a1");
           out.push([VOICE.btn === b2, ta2.readOnly, b2.title]);
           b2.fire("click"); await tick(); await tick();  // and its button stops it
           out.push([live(), VOICE.on, !!VOICE.area, ta2.readOnly]);
-          const b3 = micButton(box(), null, null, "agent:a2");
+          const b3 = micButton(box(), null, "agent:a2");
           b3.fire("click"); await tick();
           b2.fire("click"); await tick(); await tick();  // any mic button stops the one recording
           out.push([asked, live(), VOICE.on]);
@@ -1872,7 +1882,7 @@ class UiTests(unittest.TestCase):
 
     def test_the_new_agent_prompt_keeps_the_mic_on_its_row(self):
         pages, css = read(os.path.join(STATIC, "pages.js")), read(os.path.join(STATIC, "style.css"))
-        self.assertIn('P.profileSeg, P.repo, P.name, el("div", { class: "acts" }, P.rec, P.attachBtn, P.files, P.mic)', pages)
+        self.assertIn('P.profileSeg, P.repo, P.name, el("div", { class: "acts" }, P.attachBtn, P.files, P.mic)', pages)
         self.assertIn(".new-main .composer .bottom { column-gap: 6px; }", css)
 
     def test_the_phone_review_bar_says_approve_and_send(self):

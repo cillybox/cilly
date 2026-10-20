@@ -1354,14 +1354,13 @@ function composer(a) {
   const box = el("div", { class: "composer" });
   const files = el("input", { type: "file", multiple: "", hidden: true });
   files.addEventListener("change", () => { addAttach([...files.files]); files.value = ""; });
-  const rec = el("span", { class: "rec ellipsis" });
   const voiceChanged = () => { if (AV?.c?.ta !== ta) return; SIGS.composer = null; updateComposer(agentById(a.id)); };
-  AV.c = { ta, box, rec, attachRow: el("div", { class: "attach-row" }), chips: el("div", { class: "chips" }), send: el("span"),
-           mic: micButton(ta, rec, voiceChanged, "agent:" + a.id), resumeRow: el("div", { class: "resume-row" }), asks: el("div", { class: "asks" }),
+  AV.c = { ta, box, attachRow: el("div", { class: "attach-row" }), chips: el("div", { class: "chips" }), send: el("span"),
+           mic: micButton(ta, voiceChanged, "agent:" + a.id), resumeRow: el("div", { class: "resume-row" }), asks: el("div", { class: "asks" }),
            running: el("div", { class: "running-strip" }), queued: el("div", { class: "queued-cards", hidden: true }),
            jump: el("button", { class: "jump", hidden: true, "aria-label": "Jump to the latest message", onclick: jumpDown }, "↓") };
   // two groups, so the buttons stay together on the right however many chips there are
-  box.append(AV.c.resumeRow, AV.c.attachRow, ta, el("div", { class: "bottom" }, AV.c.chips, el("div", { class: "acts" }, rec,
+  box.append(AV.c.resumeRow, AV.c.attachRow, ta, el("div", { class: "bottom" }, AV.c.chips, el("div", { class: "acts" },
     el("button", { class: "round", title: "Attach files (read-only in the VM)", "aria-label": "Attach files", onclick: () => files.click() }, "+"), files,
     AV.c.mic, AV.c.send)));
   setTimeout(grow);

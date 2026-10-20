@@ -50,7 +50,6 @@ VIEWS.new = {
     });
     P.name = el("input", { class: "input pill-in", placeholder: "Name", maxlength: 48, value: NEW.name, "aria-label": "Name" });
     P.name.addEventListener("input", () => { NEW.name = P.name.value; });
-    P.rec = el("span", { class: "rec" });
     P.create = el("button", { class: "btn primary", title: `${mod}+Enter creates and starts it. Enter adds a new line.`, onclick: create }, "Create and start",
       phone ? "" : el("span", { class: "keycap" }, mod === "⌘" ? "⌘⏎" : "Ctrl ⏎"));
     P.profileSeg = seg([["coding", "Coding"], ["research", "Research"]], NEW.profile, (v) => { NEW.profile = v; VIEWS.new.update(true); }, "light");
@@ -58,7 +57,7 @@ VIEWS.new = {
     P.modes = el("div", { class: "mode-list", role: "radiogroup", "aria-label": "Lifecycle" });
     P.hint = el("div", { class: "muted" });
     P.inject = makeInjectWidget(() => NEW.profile !== "research" && !NEW.repo);
-    P.mic = micButton(P.ta, P.rec, undefined, "new-agent");
+    P.mic = micButton(P.ta, undefined, "new-agent");
     // the options: every field, in one card (no fold-out)
     P.cpus = el("input", { class: "input", type: "number", min: 1, "aria-label": "vCPUs" });
     P.mem = el("input", { class: "input", type: "number", min: 512, step: 256, "aria-label": "Memory (MiB)" });
@@ -107,7 +106,7 @@ VIEWS.new = {
         el("div", { class: "m-sheet-head" }, el("button", { class: "link quiet", onclick: () => go("agents") }, "Cancel"),
           el("span", { class: "grow center-text title" }, "New agent"), el("span", { class: "m-head-pad" })),
         P.banner, el("div", { class: "m-seg-wrap" }, P.profileSeg),
-        P.box = el("div", { class: "composer" }, P.attachRow, P.ta, el("div", { class: "bottom" }, P.rec, el("span", { class: "grow" }), P.attachBtn, P.files, P.mic)),
+        P.box = el("div", { class: "composer" }, P.attachRow, P.ta, el("div", { class: "bottom" }, el("span", { class: "grow" }), P.attachBtn, P.files, P.mic)),
         P.researchNote,
         el("div", { class: "m-set-list" }, P.projectRow = el("label", { class: "m-set-row" }, el("span", { class: "grow" }, "Project"), P.project, el("span", { class: "chev" }, "›")),
           P.repoRow, el("label", { class: "m-set-row" }, el("span", { class: "grow" }, "Name"), P.name)),
@@ -122,7 +121,7 @@ VIEWS.new = {
       el("div", { class: "new-cols" },
         el("div", { class: "new-main" },
           P.box = el("div", { class: "composer" }, P.attachRow, P.ta,
-            el("div", { class: "bottom" }, P.profileSeg, P.repo, P.name, el("div", { class: "acts" }, P.rec, P.attachBtn, P.files, P.mic))),
+            el("div", { class: "bottom" }, P.profileSeg, P.repo, P.name, el("div", { class: "acts" }, P.attachBtn, P.files, P.mic))),
           P.checklist,
           P.projectRow = el("div", { class: "row new-project" }, el("span", { class: "muted" }, "Project"), P.project,
             P.projectNote = el("span", { class: "muted grow ellipsis" })),

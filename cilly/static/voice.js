@@ -105,7 +105,7 @@ async function voicePump() {
   VOICE.busy = false;
   voicePump();
 }
-async function voiceStart(btn, area, label, key) {
+async function voiceStart(btn, area, key) {
   if (VOICE.on || VOICE.starting || VOICE.area) return;  // one microphone at a time, also on a double click
   VOICE.starting = true;
   try {
@@ -118,17 +118,14 @@ async function voiceStart(btn, area, label, key) {
   const node = VOICE.ctx.createScriptProcessor(2048, 1, 1);
   node.onaudioprocess = (e) => { if (VOICE.on) voiceFrame(new Float32Array(e.inputBuffer.getChannelData(0))); };
   src.connect(node); node.connect(VOICE.ctx.destination);
-  Object.assign(VOICE, { on: true, key: key || "", gone: 0, btn, area, label, started: Date.now(), seg: null, pre: [], noise: 0.003, finals: [],
+  Object.assign(VOICE, { on: true, key: key || "", gone: 0, btn, area, started: Date.now(), seg: null, pre: [], noise: 0.003, finals: [],
                          texts: [], interim: "", busy: false, lastSend: 0,
                          prefix: area.value.slice(0, area.selectionStart), suffix: area.value.slice(area.selectionEnd) });
   area.readOnly = true;
   btn.classList.add("recording");
   btn.title = onTouch() ? "Stop recording" : "Stop recording (Esc)";
   btn.onVoice?.();
-  const tick = () => { if (label) label.textContent = `Recording for ${Math.round((Date.now() - VOICE.started) / 1000)} s. ${onTouch() ? "Tap" : "Click"} to stop.`; };
-  tick();
   VOICE.timer = setInterval(() => {
-    tick();
     if (Date.now() - VOICE.started >= VAD.sessionMs) { voiceStop(); return; }
     // its message box left the page and no new one took over (another agent, say): stop, and let go of the mic
     VOICE.gone = VOICE.area.isConnected ? 0 : VOICE.gone || Date.now();
@@ -142,23 +139,22 @@ async function voiceStop() {
   clearInterval(VOICE.timer);
   VOICE.stream.getTracks().forEach((t) => t.stop());
   VOICE.ctx.close();
-  if (VOICE.label) VOICE.label.textContent = "Transcribing…";
   VOICE.btn.disabled = true;
+  VOICE.btn.title = "Turning your words into text";
   VOICE.btn.onVoice?.();
   voiceCloseSegment();
   for (let i = 0; i < 1200 && (VOICE.busy || VOICE.finals.length); i++) await new Promise((r) => setTimeout(r, 50));
-  const { btn, area, label } = VOICE;  // a message box drawn again meanwhile took over (voiceAdopt)
+  const { btn, area } = VOICE;  // a message box drawn again meanwhile took over (voiceAdopt)
   const end = voiceRender();
   area.setSelectionRange(end, end);
   area.readOnly = false; area.focus();
   area.dispatchEvent(new Event("input"));
   btn.disabled = false; btn.classList.remove("recording"); btn.title = "Talk";
-  if (label) label.textContent = "";
   VOICE.area = null;
   btn.onVoice?.();  // done: an empty box may offer Stop again
 }
 function recordingInto(area) { return VOICE.on && VOICE.area === area; }
-// A mic button for a textarea; `label` shows "Recording for 12 s. Click to stop.", and onVoice() runs when recording starts or stops.
+// A mic button for a textarea.  It turns red while it records, and onVoice() runs when recording starts or stops.
 function micIcon() {  // a line icon like the phone's bottom bar
   const s = svg("svg", { width: 18, height: 18, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": 2,
     "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true" });
@@ -167,19 +163,19 @@ function micIcon() {  // a line icon like the phone's bottom bar
   return s;
 }
 // `key` names the message box ("agent:<id>"), so one drawn again takes over its own recording.
-function micButton(area, label, onVoice, key = "") {
+function micButton(area, onVoice, key = "") {
   const b = el("button", { type: "button", class: "round mic", title: "Talk", "aria-label": "Talk" }, micIcon());
   b.onVoice = onVoice;
-  b.addEventListener("click", () => (VOICE.on ? voiceStop() : voiceStart(b, area, label, key)));  // any mic stops the recording
+  b.addEventListener("click", () => (VOICE.on ? voiceStop() : voiceStart(b, area, key)));  // any mic stops the recording
   b.hidden = !STATE?.speech?.enabled;
-  if (key && VOICE.area && VOICE.key === key && !VOICE.area.isConnected) voiceAdopt(b, area, label);
+  if (key && VOICE.area && VOICE.key === key && !VOICE.area.isConnected) voiceAdopt(b, area);
   return b;
 }
 // The same message box, drawn again while it records or transcribes (another tab and back): the new one carries on
-function voiceAdopt(btn, area, label) {
-  Object.assign(VOICE, { btn, area, label, gone: 0 });
+function voiceAdopt(btn, area) {
+  Object.assign(VOICE, { btn, area, gone: 0 });
   area.readOnly = true;
   voiceRender();
   if (VOICE.on) { btn.classList.add("recording"); btn.title = onTouch() ? "Stop recording" : "Stop recording (Esc)"; }
-  else { btn.disabled = true; btn.classList.add("recording"); if (label) label.textContent = "Transcribing…"; }
+  else { btn.disabled = true; btn.classList.add("recording"); btn.title = "Turning your words into text"; }
 }
