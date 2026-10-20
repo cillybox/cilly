@@ -1378,6 +1378,22 @@ class UiTests(unittest.TestCase):
             ["Audio goes to whisper on gpu-box:8080, nowhere else.", False, "Listening…"],
             ["", True, "Message coder…"]])
 
+    def test_talking_never_turns_the_send_button_into_stop(self):
+        """While a task runs, an empty message box offers Stop this task where Send is. While you record,
+        and while your words are turned into text, the box is empty but your message is coming: the
+        button there must queue it, not stop the task (and its subagents) at a tap."""
+        got = self.run_js(self.COMPOSER + r"""
+          const btn = () => [AV.c.send.kids[0].attrs["aria-label"] || AV.c.send.kids[0].textContent, AV.c.send.kids[0].disabled];
+          const c = composerState("a1"), out = [];
+          redraw(); out.push(btn());                                  // nothing typed: stop offered
+          VOICE.on = true; VOICE.area = AV.c.ta; AV.c.mic.onVoice(); out.push(btn());   // recording
+          VOICE.on = false; AV.c.mic.onVoice(); out.push(btn());      // stopped, still transcribing
+          c.draft = "fix the login timeout"; redraw(); out.push(btn());   // its text is in
+          VOICE.area = null; c.draft = ""; AV.c.mic.onVoice(); out.push(btn());   // done, and you cleared it: stop again
+          console.log(JSON.stringify(out));
+        """)
+        self.assertEqual(got, [["Stop this task", False], ["Queue ↑", True], ["Queue ↑", True], ["Queue ↑", False], ["Stop this task", False]])
+
     def test_a_file_alone_can_be_sent(self):
         got = self.run_js(self.COMPOSER + r"""
           const btn = () => AV.c.send.kids[0];

@@ -1463,11 +1463,12 @@ function updateComposer(a) {
   renderRunning(a);
   renderQueued(a);
   const c = composerState(a.id), stopped = isStopped(a), recording = recordingInto(AV.c.ta);
+  const talking = VOICE.area === AV.c.ta;  // recording, or still turning it into text: a message is coming
   const canBranch = !isResearch(a) && !!a.repo;
   // an ephemeral VM that isn't running starts fresh: nothing of the earlier conversation is left to continue
   const fresh = a.mode === "ephemeral" && stopped;
   AV.c.ta.placeholder = recording ? "Listening…" : composerHint(a);
-  if (changed("composer", [a.id, a.state, a.mode, a.auto_stop, c.attach.map((f) => f.name + f.size), c.cont, c.resume, c.newBranch, canBranch, (a.mcp || []).length, !!c.draft.trim(), AV.sending, AV.interrupting, STATE.speech, a.model, a.effort, isPhone(), recording])) {
+  if (changed("composer", [a.id, a.state, a.mode, a.auto_stop, c.attach.map((f) => f.name + f.size), c.cont, c.resume, c.newBranch, canBranch, (a.mcp || []).length, !!c.draft.trim(), AV.sending, AV.interrupting, STATE.speech, a.model, a.effort, isPhone(), recording, talking])) {
     const from = c.resume && a.tasks.find((t) => t.id === c.resume);
     if (c.resume && !from) c.resume = null;
     AV.c.resumeRow.replaceChildren(...(from ? [el("span", { class: "accent-fg" }, "↩"),
@@ -1499,8 +1500,8 @@ function updateComposer(a) {
       canBranch && c.newBranch ? pr : "");
     const has = !!c.draft.trim() || c.attach.length > 0;  // a file alone is a message too
     const label = stopped ? "Start and send ↑" : ["busy", "booting"].includes(a.state) ? "Queue ↑" : null;
-    // while a task runs, an empty box offers to stop it; once you type, the button queues your message
-    const stop = a.state === "busy" && !has && !c.attach.length;
+    // while a task runs, an empty box offers to stop it; once you type, or while you talk, the button queues your message
+    const stop = a.state === "busy" && !has && !c.attach.length && !talking;
     const send = stop ? el("button", { class: "round send stop", title: "Stop this task", "aria-label": "Stop this task", onclick: () => interruptTask(a) }, stopIcon())
       : label ? el("button", { class: "send-pill", onclick: sendMessage }, label) : el("button", { class: "round send", title: onTouch() ? "Send" : "Send (Enter)", "aria-label": "Send", onclick: sendMessage }, "↑");
     send.disabled = stop ? !!AV.interrupting : !has || AV.sending || a.state === "stopping";

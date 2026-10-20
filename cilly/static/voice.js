@@ -155,6 +155,7 @@ async function voiceStop() {
   btn.disabled = false; btn.classList.remove("recording"); btn.title = "Talk";
   if (label) label.textContent = "";
   VOICE.area = null;
+  btn.onVoice?.();  // done: an empty box may offer Stop again
 }
 function recordingInto(area) { return VOICE.on && VOICE.area === area; }
 // A mic button for a textarea; `label` shows "Recording for 12 s. Click to stop.", and onVoice() runs when recording starts or stops.
