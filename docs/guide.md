@@ -128,17 +128,31 @@ On the agent page, and for a new agent's first message, use **Attach files**, pa
 
 ### Voice input with whisper.cpp
 
-A **Talk** button next to the message boxes records your microphone and fills in the text as you speak. It appears once `speech.whisper_url` is set. whisper.cpp doesn't stream, so the page cuts your speech into phrases at pauses (about 0.7 s). A finished phrase is transcribed once and stays, and only the phrase you're still saying is re-sent for the live preview. Every request stays a few seconds long however long you talk, silence is never sent (whisper tends to invent text for it), and Stop only waits for the last phrase.
+A **Talk** button next to the message boxes records your microphone and fills in the text as you speak. It runs on your own [whisper.cpp](https://github.com/ggml-org/whisper.cpp) server, so your voice never goes to an outside service. whisper.cpp doesn't stream, so the page cuts your speech into phrases at pauses (about 0.7 s). A finished phrase is transcribed once and stays, and only the phrase you're still saying is re-sent for the live preview. Every request stays a few seconds long however long you talk, silence is never sent (whisper tends to invent text for it), and Stop only waits for the last phrase.
 
-1. On the PC with whisper.cpp, start the server listening on the LAN (default model path shown, but use any model you have):
+whisper.cpp can run on this PC, or on another PC on your network, ideally one with a graphics card.
+
+1. Build whisper.cpp and download a model. You need git, CMake and a C++ compiler.
    ```sh
-   ./build/bin/whisper-server -m models/ggml-base.en.bin --host 0.0.0.0 --port 8080
+   git clone https://github.com/ggml-org/whisper.cpp.git
+   cd whisper.cpp
+   sh ./models/download-ggml-model.sh base.en
+   cmake -B build
+   cmake --build build -j --config Release
    ```
-   No `--convert` is needed, because the page already sends 16 kHz mono WAV.
-2. On that PC, allow port 8080 only from this machine (e.g. `ufw allow from <this-ip> to any port 8080 proto tcp`). The server has no login.
-3. In the panel config (`~/.config/cilly/config.json`, or Settings → raw config): `"speech": {"whisper_url": "http://<whisper-pc-ip>:8080", "language": "en"}`. Restart the panel.
+   `base.en` is small and quick, and only knows English. Bigger models such as `small.en` or `large-v3-turbo` are more accurate and slower. For other languages, pick a model without `.en`. With an NVIDIA card, add `-DGGML_CUDA=1` to the first `cmake` line, or `-DGGML_VULKAN=1` for other graphics cards.
+2. Start the server.
+   - On this PC, it listens only here:
+     ```sh
+     ./build/bin/whisper-server -m models/ggml-base.en.bin --host 127.0.0.1 --port 8080
+     ```
+     Its URL is `http://127.0.0.1:8080`.
+   - On another PC, use `--host 0.0.0.0` so it listens on the network, and allow port 8080 only from this PC (for example `ufw allow from <this-ip> to any port 8080 proto tcp`). The server has no login. Its URL is `http://<whisper-pc-ip>:8080`.
 
-The browser asks for microphone permission the first time. Audio goes browser → panel → your whisper server, and nowhere else. There's no proxy, no redirects are followed, and the VMs can't reach the whisper server. It travels unencrypted over your LAN (whisper.cpp's server has no HTTPS), so use this on a network you trust. Recordings stop at `speech.max_seconds` (120).
+   No `--convert` is needed, because the page already sends 16 kHz mono WAV. whisper-server assumes English. For another language, start it with `-l auto` to detect it, or with its code, such as `-l de`.
+3. In the panel, open **Settings → Speech to text**, paste the URL and press **Test connection**. It sends half a second of silence and says how long the answer took. Then turn on **Show the microphone** and press **Save settings**. It works right away, with no restart.
+
+The browser asks for microphone permission the first time. Audio goes browser → panel → your whisper server, and nowhere else. There's no proxy, no redirects are followed, and the VMs can't reach the whisper server. It travels unencrypted over your network (whisper.cpp's server has no HTTPS), so use another PC only on a network you trust, or reach it through Tailscale, WireGuard or an SSH tunnel. Recordings stop after the maximum set there (120 s unless you change it).
 
 ### Agents without a repository
 
