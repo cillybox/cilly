@@ -42,6 +42,7 @@ KEY_BEGIN, KEY_END = "-----BEGIN OPENSSH PRIVATE KEY-----", "-----END OPENSSH PR
 SCAN_TIMEOUT = 60
 READY_TIMEOUT = 60  # Tor can take a while to build a circuit
 PROC_TCP = ("/proc/net/tcp", "/proc/net/tcp6")
+FORWARD_RECENT = 60  # a forward that failed this long ago still explains a failed request
 NO_LOGIN = ["-o", "PubkeyAuthentication=no", "-o", "PasswordAuthentication=no", "-o", "KbdInteractiveAuthentication=no",
             "-o", "GSSAPIAuthentication=no", "-o", "HostbasedAuthentication=no"]
 
@@ -192,6 +193,7 @@ class Tunnel(Helper):
         self.log_dir = log_dir
         self.port = free_port()  # kept across restarts, so agents' proxies keep the right address
         self.last = ""  # ssh's last line, which says why it stopped
+        self._forward = ("", 0.0)  # the last forward the server refused, and when
         self._lost_port = False
 
     def binary(self) -> str | None:
@@ -261,7 +263,8 @@ class Tunnel(Helper):
 
     def argv(self, binary: str, owner_pid: int | None) -> list[str]:
         s = self.ssh
-        argv = [binary, "-N", "-F", "/dev/null", "-o", "BatchMode=yes", "-o", "IdentityAgent=none",
+        # LogLevel=ERROR: ssh's own errors, but not a banner the server sends, which is the server's text, not cilly's
+        argv = [binary, "-N", "-F", "/dev/null", "-o", "BatchMode=yes", "-o", "IdentityAgent=none", "-o", "LogLevel=ERROR",
                 "-o", f"HostKeyAlias=cilly-{self.name}", "-o", f"UserKnownHostsFile={self.dir}/known_hosts",
                 "-o", "GlobalKnownHostsFile=/dev/null", "-o", "CheckHostIP=no", "-o", "UpdateHostKeys=no",
                 "-o", "ForwardAgent=no", "-o", "ForwardX11=no", "-o", "PermitLocalCommand=no",
@@ -281,11 +284,14 @@ class Tunnel(Helper):
 
     def on_start(self) -> None:
         self.last = ""
+        self._forward = ("", 0.0)
 
     def on_line(self, line: bytes) -> None:
         text = re.sub(r"[^\x20-\x7e]", " ", line.decode("utf-8", "replace")).strip()
         if text:
             self.last = text[:300]
+        if "open failed" in text:  # a forward the server refused: the tunnel itself stays up
+            self._forward = (text[:300], time.monotonic())
         if "Address already in use" in text or "cannot listen to port" in text:
             self._lost_port = True
 
@@ -303,20 +309,44 @@ class Tunnel(Helper):
             time.sleep(0.2)
         raise TunnelError(self.why() if self.last else f"the SSH tunnel didn't come up within {timeout:g} s")
 
-    def why(self) -> str:
-        """ssh's own reason, in words where cilly knows it."""
-        last = self.last
+    def why(self, last: str | None = None) -> str:
+        """ssh's own reason, in words where cilly knows it.  Anything else is quoted as ssh's, so a
+        line from the server is never taken for cilly's own words."""
+        last = self.last if last is None else last
+        host, port = self.target
+        where = f"[{host}]:{port}" if ":" in host else f"{host}:{port}"
         if "Host key verification failed" in last or "REMOTE HOST IDENTIFICATION HAS CHANGED" in last:
             return "the server's host key isn't the one you confirmed. If you reinstalled it, fetch the key again."
         if "Permission denied" in last:
             return f"the server didn't take cilly's key. Add the public key to ~{self.ssh['user']}/.ssh/authorized_keys there."
-        if "open failed" in last or "administratively prohibited" in last:
-            return "the server refused the forward. Check the model server's address as the server sees it."
-        return last or self.error or "ssh stopped"
+        if "administratively prohibited" in last:
+            return (f"the server doesn't let cilly's key forward to {where}. Check that its authorized_keys has the line "
+                    "Settings shows now, and that its SSH server allows TCP forwarding (AllowTcpForwarding).")
+        if "Connection refused" in last and "open failed" in last:
+            return (f"nothing is listening on {where} on the server. Start the model server there, "
+                    "or fix Address on that server.")
+        if m := re.search(r"open failed: connect failed: (.+)$", last):
+            return f"the server can't reach {where}: {m.group(1).rstrip('.')}."
+        if "open failed" in last:
+            return f"the server refused the forward to {where}."
+        if last.startswith("cilly: "):  # cilly's own route, the ssh's ProxyCommand
+            return last.removeprefix("cilly: ")
+        if last:
+            return f"ssh said: {last}"
+        return self.error or "ssh stopped"
+
+    def forward_error(self) -> str | None:
+        """Why the server last refused a forward, when that was recent: the tunnel stays up then, but
+        the request through it fails, and this says why."""
+        text, at = self._forward
+        return self.why(text) if text and time.monotonic() - at < FORWARD_RECENT else None
 
     def status(self) -> dict:
-        return {"running": self.running(), "ready": self.ready(), "port": self.port,
-                "error": None if self.ready() else (self.why() if self.last or self.error else None)}
+        if not self.ready():
+            error = self.why() if self.last or self.error else None
+        else:
+            error = self.forward_error()
+        return {"running": self.running(), "ready": self.ready(), "port": self.port, "error": error}
 
     def stop(self) -> None:
         super().stop()
@@ -348,7 +378,8 @@ def fetch_host_key(name: str, ssh: dict, route: dict, run_dir: str, log_dir: str
         for raw in p.stdout.decode(errors="replace").splitlines() + p.stderr.decode(errors="replace").splitlines():
             if raw.strip():
                 t.on_line(raw.encode())
-        raise TunnelError(f"couldn't get its host key: {t.last or f'ssh exited with {p.returncode}'}")
+        said = t.last.removeprefix("cilly: ") if t.last.startswith("cilly: ") else f"ssh said: {t.last}"
+        raise TunnelError(f"couldn't get its host key: {said if t.last else f'ssh exited with {p.returncode}'}")
     except subprocess.TimeoutExpired:
         raise TunnelError(f"it didn't answer within {timeout:g} s") from None
     except (OSError, ValueError) as e:

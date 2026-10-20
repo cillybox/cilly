@@ -2,7 +2,10 @@
 """Fake ssh for the SSH tunnel tests.  Fetching the host key (accept-new) writes
 FAKE_SSH_HOST_KEY under the alias and fails to log in, as a real server does.  A tunnel checks
 the pinned key and its own key file, then forwards 127.0.0.1:PORT to the target, which in the
-tests is on this PC too.  FAKE_SSH_DENY=1 refuses the key.  Its argv goes to FAKE_SSH_LOG."""
+tests is on this PC too.  FAKE_SSH_DENY=1 refuses the key.  Its argv goes to FAKE_SSH_LOG.
+FAKE_SSH_BANNER is a banner the server sends, which ssh shows below LogLevel=ERROR, as real ssh
+does.  A forward to a port where nothing listens fails the way ssh reports it, and so does any
+forward with FAKE_SSH_PROHIBIT=1, as for a server whose permitopen doesn't match."""
 import json
 import os
 import socket
@@ -32,6 +35,8 @@ if os.environ.get("FAKE_SSH_LOG"):
     with open(os.environ["FAKE_SSH_LOG"], "a") as f:
         f.write(json.dumps({"argv": sys.argv, "env": dict(os.environ)}) + "\n")
 alias, known = opts.get("HostKeyAlias"), opts.get("UserKnownHostsFile")
+if os.environ.get("FAKE_SSH_BANNER") and opts.get("LogLevel", "INFO").upper() not in ("ERROR", "FATAL", "QUIET"):
+    print(os.environ["FAKE_SSH_BANNER"], file=sys.stderr, flush=True)
 if opts.get("StrictHostKeyChecking") == "accept-new":
     with open(known, "a") as f:
         f.write(f"{alias} {HOST_KEY}\n")
@@ -72,8 +77,19 @@ def pump(a, b):
                 pass
 
 
+channel = 2
 while True:
     c, _ = srv.accept()
-    up = socket.create_connection((thost.strip("[]"), int(tport)))
+    channel += 1
+    if os.environ.get("FAKE_SSH_PROHIBIT"):
+        print(f"channel {channel}: open failed: administratively prohibited: open failed", file=sys.stderr, flush=True)
+        c.close()
+        continue
+    try:
+        up = socket.create_connection((thost.strip("[]"), int(tport)))
+    except OSError:
+        print(f"channel {channel}: open failed: connect failed: Connection refused", file=sys.stderr, flush=True)
+        c.close()
+        continue
     threading.Thread(target=pump, args=(c, up), daemon=True).start()
     threading.Thread(target=pump, args=(up, c), daemon=True).start()

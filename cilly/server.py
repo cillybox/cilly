@@ -1331,6 +1331,16 @@ class App:
         MS.OWN_PORTS.add(t.port)
         return f"http://127.0.0.1:{t.port}{u['prefix']}"
 
+    def _tunnel_why(self, name: str, s: dict, e: Exception) -> str:
+        """Why a request to a server over SSH failed: when its server refused the forward, ssh says so
+        a moment later, and that says more than a closed connection."""
+        t = self.ssh.procs.get(name) if "ssh" in s else None
+        for _ in range(10 if t else 0):
+            if why := t.forward_error():
+                return f"the SSH tunnel: {why}"
+            time.sleep(0.05)
+        return str(e)
+
     def _stop_tunnel(self, name: str) -> None:
         """Its next start may take another port, and another tunnel of yours this one's: running
         agents forget the old address, and their next message gets the new one."""
@@ -2069,7 +2079,7 @@ class App:
             except ApiError:
                 got = {"models": [], "error": "it needs its API key. Paste it in Settings → Secrets."}
             except MS.ModelServerError as e:
-                got = {"models": [], "error": str(e)}
+                got = {"models": [], "error": self._tunnel_why(name, s, e)}
             got.update(url=s["url"], at=now)
             self._model_lists[name] = got
             return name, got
@@ -2152,14 +2162,14 @@ class App:
                 url = self._model_url(name, s)
             models = MS.list_models(url, key)
         except MS.ModelServerError as e:
-            return {"ok": False, "error": f"Couldn't list its models: {e}"}
+            return {"ok": False, "error": f"Couldn't list its models: {self._tunnel_why(name, s, e)}"}
         model = str(body.get("model") or (models[0] if models else ""))
         if not models:
             return {"ok": False, "models": [], "error": "It has no models yet."}
         try:
             res = MS.test(url, key, model)
         except MS.ModelServerError as e:
-            return {"ok": False, "models": models, "error": str(e)}
+            return {"ok": False, "models": models, "error": self._tunnel_why(name, s, e)}
         if name in self.cfg().get("model_servers", {}):
             self._model_lists.pop(name, None)  # asked again on the next list
         return dict(res, models=models, model=model)

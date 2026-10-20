@@ -3321,6 +3321,22 @@ class ServerTests(unittest.TestCase):
         self.assertNotIn("model-ssh:gpu", self.app.secret_refs())
         self.assertFalse(self.app.secrets.has_pasted("model-ssh:gpu"))
 
+    def test_a_refused_forward_explains_a_failed_request(self):
+        """Through a tunnel, a request fails as a closed connection when the server refused the forward.
+        ssh says why a moment later, and Settings shows that instead."""
+        from cilly import models as MS
+        why = "nothing is listening on 127.0.0.1:18000 on the server. Start the model server there, or fix Address on that server."
+        fake = mock.Mock()
+        fake.forward_error.side_effect = [None, None, why]  # ssh's line comes in just after the failure
+        over_ssh = {"url": "http://127.0.0.1:18000", "ssh": {"host": "gpu.example.net", "port": 22, "user": "root", "route": "direct"}}
+        with mock.patch.dict(self.app.ssh.procs, {"gpu": fake}):
+            got = self.app._tunnel_why("gpu", over_ssh, MS.ModelServerError("127.0.0.1:51455 closed the connection"))
+            self.assertEqual(got, f"the SSH tunnel: {why}")
+            fake.forward_error.side_effect = None
+            fake.forward_error.return_value = None  # no refused forward: the request's own error stands
+            self.assertEqual(self.app._tunnel_why("gpu", over_ssh, MS.ModelServerError("it timed out")), "it timed out")
+            self.assertEqual(self.app._tunnel_why("gpu", {"url": "http://10.0.0.5:11434"}, MS.ModelServerError("down")), "down")
+
     def test_leaving_global_sites_out_for_one_agent(self):
         """Settings' allowlist holds defaults: one agent can go without some of them, from the start or
         later, live.  Nothing else changes: its project's and its own sites stay."""
