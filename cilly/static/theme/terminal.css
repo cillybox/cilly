@@ -30,6 +30,7 @@
   & .btn.danger { background: var(--danger-btn); color: var(--fg-max); }
   & .btn.ghost { background: transparent; clip-path: none; }
   & .btn:disabled, & .round.send:disabled, & .send-pill:disabled { background: var(--surface-2); color: var(--fg-6); }
+  & :is(.btn, .round.send, .send-pill, .sb-new):focus-visible { outline: 2px solid var(--accent-fg); outline-offset: -4px; }  /* the clip-path would cut an outside ring */
   & .sb-new { border: 0; }
   & .toast-title { font-weight: 400; }
   & .toast { border-color: var(--ok); }

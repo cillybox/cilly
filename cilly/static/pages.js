@@ -89,28 +89,31 @@ VIEWS.new = {
       el("span", { class: "muted small pretty" }, "Copies ~/outbox into a new subfolder here before its disk is deleted")), P.keep), P.keepDest);
     // no host-folder injection from a phone: the folder browser needs a desktop (Start from there to give it one)
     P.injectBox = opt("Host folder", "Copied in read-only at /inject. Optional.", P.inject.node);
-    P.options = el("div", { class: "card flush new-options" }, phone ? "" : el("div", { class: "opt-head" }, "Options"),
+    P.options = el("div", { class: "card flush new-options" }, phone ? "" : el("div", { class: "opt-head" }, "Virtual machine"),
       opt("Resources", "", el("div", { class: "row nowrap opt-pair" },
         el("label", { class: "field grow" }, el("span", { class: "label" }, "vCPUs"), P.cpus),
         el("label", { class: "field grow" }, el("span", { class: "label" }, "Memory (MiB)"), P.mem))),
-      P.autoRow, P.keepBox, P.modelOpt = opt("Model", "Claude's, or one from your model servers", P.modelBox), opt("VM image", "Which toolchains it has", P.imageBox), opt("Route", "How its traffic leaves", P.routeBox), opt("MCP servers", "", P.mcp), P.pluginsOpt = opt("Plugins", "Installed in its VM before its first task", P.plugins),
-      P.skillsOpt = opt("Skills", "Your own, added in its VM before its first task", P.skills),
-      P.prBox, phone ? "" : P.injectBox, P.adv);
+      P.modelOpt = opt("Model", "Claude's, or one from your model servers", P.modelBox), opt("VM image", "Which toolchains it has", P.imageBox), opt("Route", "How its traffic leaves", P.routeBox),
+      P.extras = el("details", { class: "adv opt-sec new-adv" }, el("summary", {}, "Tools and files", P.extrasCount = el("span", { class: "dim" })),
+        opt("MCP servers", "", P.mcp), P.pluginsOpt = opt("Plugins", "Installed in its VM before its first task", P.plugins),
+        P.skillsOpt = opt("Skills", "Your own, added in its VM before its first task", P.skills), P.prBox, phone ? "" : P.injectBox),
+      P.adv);
+    P.stopCard = el("div", { class: "card flush" }, P.autoRow, P.keepBox);  // what happens to the VM when it stops, next to Lifecycle
     const lifecycle = el("div", { class: "stack tight" }, el("span", { class: "section-title" }, "Lifecycle"), P.modes);
     if (phone) {  // a full-screen sheet: the same fields as a settings-style list, Create pinned at the bottom
       const page = el("div", { class: "page" }), inner = el("div", { class: "page-inner m-new-page" });
       page.append(inner); main.append(page);
       P.name.placeholder = "auto";
-      P.repoRow = el("label", { class: "m-set-row" }, el("span", { class: "grow" }, "Repository"), P.repo, el("span", { class: "chev" }, "›"));
+      P.repoRow = el("label", { class: "m-set-row" }, el("span", { class: "grow" }, "Repository"), P.repo, el("span", { class: "chev", "aria-hidden": "true" }, "›"));
       inner.append(
         el("div", { class: "m-sheet-head" }, el("button", { class: "link quiet", onclick: () => go("agents") }, "Cancel"),
           el("span", { class: "grow center-text title" }, "New agent"), el("span", { class: "m-head-pad" })),
         P.banner, el("div", { class: "m-seg-wrap" }, P.profileSeg),
         P.box = el("div", { class: "composer" }, P.attachRow, P.ta, el("div", { class: "bottom" }, el("span", { class: "grow" }), P.attachBtn, P.files, P.mic)),
         P.researchNote,
-        el("div", { class: "m-set-list" }, P.projectRow = el("label", { class: "m-set-row" }, el("span", { class: "grow" }, "Project"), P.project, el("span", { class: "chev" }, "›")),
-          P.repoRow, el("label", { class: "m-set-row" }, el("span", { class: "grow" }, "Name"), P.name)),
-        lifecycle, P.options, P.checklist,
+        el("div", { class: "m-set-list" }, P.projectRow = el("label", { class: "m-set-row" }, el("span", { class: "grow" }, "Project"), P.project, el("span", { class: "chev", "aria-hidden": "true" }, "›")),
+          P.repoRow, el("label", { class: "m-set-row" }, el("span", { class: "grow" }, "Name"), P.name, el("span", { class: "chev spacer", "aria-hidden": "true" }, "›"))),
+        lifecycle, P.stopCard, P.options, P.checklist,
         el("div", { class: "m-foot" }, P.create, P.hint));
       return;
     }
@@ -125,7 +128,7 @@ VIEWS.new = {
           P.checklist,
           P.projectRow = el("div", { class: "row new-project" }, el("span", { class: "muted" }, "Project"), P.project,
             P.projectNote = el("span", { class: "muted grow ellipsis" })),
-          P.researchNote, lifecycle),
+          P.researchNote, lifecycle, P.stopCard),
         P.options))),
     el("div", { class: "new-foot" }, el("div", { class: "new-foot-inner" }, P.hint, P.cancel, P.create)));
   },
@@ -147,7 +150,7 @@ VIEWS.new = {
       // none unless you pick one, so a private session never gets a repository by accident; the project's come first
       const first = (proj?.repos || []).filter((r) => STATE.repos.includes(r)), rest = STATE.repos.filter((r) => !first.includes(r));
       const keep = STATE.repos.includes(NEW.repo) ? NEW.repo : "";
-      P.repo.replaceChildren(el("option", { value: "" }, "No repository (scratch folder)"), ...first.map((r) => el("option", { value: r }, r)),
+      P.repo.replaceChildren(el("option", { value: "" }, isPhone() ? "No repository" : "No repository (scratch folder)"), ...first.map((r) => el("option", { value: r }, r)),
         first.length && rest.length ? el("option", { disabled: true }, "────") : "",
         ...rest.map((r) => el("option", { value: r }, r)));
       P.repo.value = keep; NEW.repo = P.repo.value;
@@ -161,6 +164,8 @@ VIEWS.new = {
     if (!P.mem.value) P.mem.value = STATE.vm_defaults.memory_mb;
     P.cpus.max = STATE.vm_defaults.max_cpus; P.mem.max = STATE.vm_defaults.max_memory_mb;
     (P.repoRow || P.repo).hidden = research; P.researchNote.hidden = !research; P.injectBox.hidden = research || !isOwner(); P.autoRow.hidden = research;
+    P.stopCard.hidden = P.autoRow.hidden && P.keepBox.hidden;
+    P.extrasCount.textContent = [NEW.mcp.size + NEW.plugins.size + NEW.skills.size].map((n) => (n ? ` ${n} on` : ""))[0];
     P.prBox.hidden = research || !NEW.repo;  // only an agent with a repository opens pull requests
     if (changed("newModes", [NEW.mode, research]) || force) {
       const row = (v, title, desc, tag) => el("button", { class: "mode-row" + (NEW.mode === v ? " on" : ""), type: "button", role: "radio", "aria-checked": String(NEW.mode === v),
@@ -399,7 +404,7 @@ VIEWS.policy = {
       placeholder: '{"pixellab": {"type": "http", "url": "https://api.pixellab.ai/mcp", "headers": {"Authorization": "Bearer ${PIXELLAB_API_KEY}"}}}' });
     P.mcpList = el("div", { class: "stack tight" });
     P.lib = {}; P.keys = {}; P.mcpEdited = false;
-    P.modes = el("div", { class: "mode-cards", role: "radiogroup", "aria-label": "Permission mode" });
+    P.modes = el("div", { class: "mode-list", role: "radiogroup", "aria-label": "Permission mode" });
     P.notes = sw(true, (on, b) => { setSw(b, on); P.dirty = true; renderBar(); });
     P.dash = sw(false, (on, b) => { setSw(b, on); P.dirty = true; renderBar(); });
     P.plan = sw(false, (on, b) => { setSw(b, on); P.dirty = true; renderBar(); });
@@ -409,17 +414,22 @@ VIEWS.policy = {
     const dirty = () => { P.dirty = true; renderBar(); };
     for (const t of [P.md, P.ms, P.mcp]) { t.addEventListener("input", dirty); t.disabled = true; }  // until the policy is loaded: saving blanks would wipe it
     P.mcp.addEventListener("input", () => { P.mcpEdited = true; });
-    inner.append(P.failed,
-      el("div", { class: "section-title" }, "Permission mode"), P.modes,
+    // Four panels behind tabs, one Save for all of them
+    const toggle = (sw, title, desc, tip) => el("div", { class: "opt-sec row nowrap" }, el("label", { class: "grow stack0" }, el("span", {}, title), el("span", { class: "muted small pretty" }, desc)), tip || "", sw);
+    P.panels = {
+      behavior: el("div", { class: "stack" }, el("div", { class: "section-title" }, "Permission mode"), P.modes,
+        el("div", { class: "card flush" },
+          toggle(P.notes, "Tell each agent about its VM", "Read-only folders, the outbox and blocked sites."),
+          toggle(P.dash, "Check for em and en dashes", "Each file Claude writes is checked, and it is asked to fix them."),
+          toggle(P.plan, "Keep the plan through compaction", "Agents keep their plan in ~/plan.md, and it comes back each time a long conversation is compacted.",
+            infoTip("Adds rules to CLAUDE.md on keeping ~/plan.md and briefing subagents, and a managed hook that puts the plan back into the "
+              + "conversation after each compaction. Useful for long tasks, and on local models, which compact often.")))),
+      claudemd: el("div", { class: "stack" },
       el("div", { class: "section-title" }, "CLAUDE.md ", el("span", { class: "muted" }, "Instructions and code style for every agent")), P.md,
-      el("div", { class: "row" }, P.useRec),
-      el("label", { class: "row nowrap" }, P.notes, el("span", { class: "pretty" }, "Also tell each agent about its VM, like read-only folders, the outbox and blocked sites.")),
-      el("label", { class: "row nowrap" }, P.dash, el("span", { class: "pretty" }, "Check each file Claude writes for em and en dashes, and ask it to fix them.")),
-      el("div", { class: "row nowrap" }, el("label", { class: "row nowrap grow" }, P.plan, el("span", { class: "pretty" },
-        "Keep the plan through compaction. Agents keep their plan in ~/plan.md, and it comes back each time a long conversation is compacted.")),
-        infoTip("Adds rules to CLAUDE.md on keeping ~/plan.md and briefing subagents, and a managed hook that puts the plan back into the "
-          + "conversation after each compaction. Useful for long tasks, and on local models, which compact often.")),
-      el("div", { class: "section-title" }, "Managed settings ", el("span", { class: "muted" }, "Permissions, env, hooks")), P.ms,
+      el("div", { class: "row" }, P.useRec)),
+      managed: el("div", { class: "stack" },
+      el("div", { class: "section-title" }, "Managed settings ", el("span", { class: "muted" }, "Permissions, env, hooks")), P.ms),
+      extensions: el("div", { class: "stack" },
       el("div", { class: "section-title" }, "MCP servers ", el("span", { class: "muted" }, "Turn them on per agent from the message box"), infoTip("Keys never go in the config. It has ${NAME}, and the key itself is pasted here or "
         + "when an agent first needs it. Remote servers' hosts are added to an agent's allowlist while the server is on for it. Adding, removing and keys are saved right away.")),
       P.mcpList,
@@ -431,7 +441,17 @@ VIEWS.policy = {
       el("div", { class: "section-title" }, "Skills ", el("span", { class: "muted" }, "Turn them on per agent from the message box"), infoTip("Your own Claude Code skills. Upload a skill's folder as a .zip, "
         + "or just its SKILL.md, with a name and a description at the top. It stays on this PC, never on GitHub. Each agent you turn it on for gets a copy in ~/.claude/skills "
         + "in its VM before its next task. Research agents never get them. Uploading one with the same name replaces it.")),
-      P.skillsBox = el("div", { class: "stack tight" }));
+      P.skillsBox = el("div", { class: "stack tight" })),
+    };
+    P.tabs = el("div", { class: "set-tabs", role: "tablist" });
+    const POLICY_TABS = [["behavior", "Behavior"], ["claudemd", "CLAUDE.md"], ["managed", "Managed settings"], ["extensions", "MCP, plugins, skills"]];
+    P.showTab = (key) => {
+      P.tab = key;
+      for (const [k, node] of Object.entries(P.panels)) node.hidden = k !== key;
+      P.tabs.replaceChildren(...POLICY_TABS.map(([k, label]) => el("button", { class: "tab" + (k === key ? " on" : ""), type: "button", role: "tab", "aria-selected": String(k === key), onclick: () => P.showTab(k) }, label)));
+    };
+    inner.append(P.tabs, P.failed, ...Object.values(P.panels));
+    P.showTab(P.tab || "behavior");
     renderPlugins(); renderMcp(); renderSkills();
     main.append(P.bar);
     function renderBar() {
@@ -600,9 +620,9 @@ VIEWS.policy = {
       const opts = [["bypassPermissions", "Everything is allowed except your deny rules. The VM and egress proxy do the isolating."],
         ["dontAsk", "Only allow rules run, and everything else is denied."],
         ["acceptEdits", "File edits run. Shell commands and other tools need allow rules."]];
-      P.modes.replaceChildren(...opts.map(([m, d]) => el("div", { class: "card select-card" + (P.mode === m ? " on" : ""), role: "radio", "aria-checked": String(P.mode === m), tabindex: 0,
+      P.modes.replaceChildren(...opts.map(([m, d]) => el("button", { class: "mode-row" + (P.mode === m ? " on" : ""), type: "button", role: "radio", "aria-checked": String(P.mode === m),
         onclick: () => { P.mode = m; P.dirty = true; renderModes(); P.renderBar(); } },
-        el("span", { class: "mono" }, m), el("span", { class: "desc" }, d))));
+        el("span", { class: "radio" }), el("span", { class: "stack0" }, el("span", { class: "title mono" }, m), el("span", { class: "muted small pretty" }, d)), el("span"))));
     }
   },
   async save() {
@@ -683,8 +703,10 @@ async function fetchBuild(repo, ref) {
 }
 
 // ---- Settings: one tab at a time; edits in every tab are kept until Save settings ----
-const SETTINGS_TABS = [["secrets", "Secrets"], ["github", "GitHub access"], ["network", "Network"], ["models", "Local models"], ["images", "VM images"],
-  ["vm", "VM limits"], ["host", "This PC"], ["speech", "Speech to text"], ["devices", "Devices"], ["appearance", "Appearance"], ["advanced", "Advanced"]];
+const SETTINGS_TABS = [["secrets", "Secrets"], ["github", "GitHub access"], ["models", "Local models"],
+  ["network", "Network"], ["images", "VM images"], ["vm", "VM limits"], ["host", "This PC"],
+  ["speech", "Speech to text"], ["devices", "Devices"], ["appearance", "Appearance"], ["advanced", "Advanced"]];
+const TAB_GROUP_STARTS = new Set(["network", "speech", "advanced"]);  // Connections, Runtime, Interface, Advanced: a divider before each after the first
 const openSettings = (tab) => go("settings", { settingsTab: tab, sec: tab });  // a tab on the PC, its own screen on a phone
 VIEWS.settings = {
   mount(main) {
@@ -707,9 +729,9 @@ VIEWS.settings = {
       P.body = el("div", { class: "set-body" }, VIEWS.settings.pending());
       P.saveNote = el("span", { class: "warn small", hidden: true }, "Unsaved changes");
       P.main.replaceChildren(el("div", { class: "set-head" }, el("div", { class: "set-head-inner" },
-        el("div", { class: "row nowrap" }, el("h1", { class: "page-title grow" }, "Settings"), P.saveNote,
-          el("button", { class: "btn primary", onclick: VIEWS.settings.save }, "Save settings")), P.tabs)),
-      el("div", { class: "page" }, P.body));
+        el("h1", { class: "page-title" }, "Settings"), P.tabs)),
+      el("div", { class: "page" }, P.body),
+      el("div", { class: "save-bar" }, P.saveNote, el("button", { class: "btn primary", onclick: VIEWS.settings.save }, "Save settings")));
     }
     if (P.c) VIEWS.settings.place();
   },
@@ -771,7 +793,7 @@ VIEWS.settings = {
     const fits = (shown, rest) => {
       const more = rest.length ? el("button", { class: "tab", "aria-haspopup": "menu", onclick: () => openPop(more, el("div", { class: "menu" },
         ...rest.map(([k, label]) => el("button", { class: "menu-item", onclick: () => { closePop(); VIEWS.settings.showTab(k); } }, label)))) }, "More ", foldMark(true)) : "";
-      P.tabs.replaceChildren(...shown.map(tab), more);
+      P.tabs.replaceChildren(...shown.flatMap((t, i) => (i && TAB_GROUP_STARTS.has(t[0]) ? [el("span", { class: "tab-sep", "aria-hidden": "true" }), tab(t)] : [tab(t)])), more);
       return P.tabs.scrollWidth <= P.tabs.clientWidth + 1;
     };
     let n = SETTINGS_TABS.length;
@@ -816,6 +838,8 @@ VIEWS.settings = {
     P.yolo = num(yr ?? 3, 1); P.yolo.max = 100; P.yolo.disabled = yr === null;
     P.yoloAll = sw(yr === null, (on, b) => { setSw(b, on); P.yolo.disabled = on; });
     P.json = el("textarea", { class: "editor", rows: 24, spellcheck: false, value: JSON.stringify(c, null, 2), "aria-label": "Full configuration" });
+    const setRow = (label, desc, control, tip) => el("div", { class: "opt-sec row set-row" }, el("div", { class: "grow stack0" }, el("span", {}, label, tip ? infoTip(tip) : ""),
+      desc ? el("span", { class: "muted small pretty" }, desc) : ""), control);  // a label and what it does on the left, its control on the right
     const field = (label, input, cls, tip) => el("label", { class: "field" + (cls ? " " + cls : "") }, el("span", { class: "label" }, label, tip ? infoTip(tip) : ""), input);
     P.panels = {
       secrets: setPanel(["Secrets", infoTip((STATE.can_save_secrets ? "Pasted values are saved encrypted on this PC while Save on this PC is on, else kept in the panel's memory until it stops. "
@@ -832,12 +856,14 @@ VIEWS.settings = {
         + "An agent set to one of their models uses it instead of Claude's. Changes here are saved right away.", P.models.node),
       images: setPanel("VM images", "Agents start from these. Changes apply at an agent's next start.", imagesSection()),
       vm: setPanel("VM limits", "Defaults for new agents, and the most any agent may ask for.",
-        el("div", { class: "set-grid" }, field("Default vCPUs", P.cpus), field("Default memory (MiB)", P.mem), field("Max vCPUs", P.maxc), field("Max memory (MiB)", P.maxm)),
-        el("div", { class: "set-grid one" }, field("Stop when idle", P.idle, "", "Stop when idle is for persistent agents that don't have their own setting. "
-          + "Ephemeral, ephemeral + memory and research agents start with it off. Change it per agent in its ··· menu.")),
-        setSubTip("YOLO round limit", "For agents in YOLO mode, where research questions go out without your review. "
-          + "After this many in a row, new questions wait in the inbox until you message the agent."),
-        el("div", { class: "row bottom" }, field("Questions in a row", P.yolo), el("label", { class: "row nowrap tall" }, P.yoloAll, el("span", {}, "No limit")))),
+        el("div", { class: "card flush" },
+          setRow("Default vCPUs", "For a new agent", P.cpus), setRow("Max vCPUs", "The most an agent may ask for", P.maxc),
+          setRow("Default memory (MiB)", "For a new agent", P.mem), setRow("Max memory (MiB)", "The most an agent may ask for", P.maxm),
+          setRow("Stop when idle", "For persistent agents without their own setting", P.idle, "Stop when idle is for persistent agents that don't have their own setting. "
+            + "Ephemeral, ephemeral + memory and research agents start with it off. Change it per agent in its ··· menu."),
+          setRow("YOLO round limit", "Questions in a row an agent in YOLO mode may send without review. After that, new ones wait in the inbox until you message the agent.",
+            el("div", { class: "row nowrap" }, P.yolo, el("label", { class: "row nowrap" }, P.yoloAll, el("span", {}, "No limit"))),
+            "For agents in YOLO mode, where research questions go out without your review. After this many in a row, new questions wait in the inbox until you message the agent."))),
       host: setPanel("This PC", "What cilly needs on this PC, and starting it when you log in.", (P.thisPc = thisPcSection())),
       speech: setPanel("Speech to text", "Your own whisper.cpp server.",
         el("div", { class: "card stack" },
@@ -890,7 +916,7 @@ VIEWS.settings = {
     const s = settingsSummaries(P.c, P.secrets);
     const row = (key, label, value, cls, dot) => el("button", { class: "m-set-row", onclick: () => (key === "policy" ? go("policy") : VIEWS.settings.open(key)) },
       dot ? el("span", { class: "dot s-failed" }) : "", el("span", { class: "grow" }, label), P.dirtyTabs?.has(key) ? el("span", { class: "warn small" }, "Unsaved") : "",
-      el("span", { class: cls || "muted" }, value), el("span", { class: "chev" }, "›"));
+      el("span", { class: cls || "muted" }, value), el("span", { class: "chev", "aria-hidden": "true" }, "›"));
     const paired = el("span");  // filled in when the list of devices comes
     P.body.replaceChildren(el("h1", { class: "m-h1" }, "Settings"),
       el("div", { class: "m-set-list" }, row("secrets", "Secrets", s.secrets, s.missing ? "err" : "", s.missing),

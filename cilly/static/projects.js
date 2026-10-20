@@ -281,7 +281,7 @@ function projectPhone(p, members, drafts) {
     el("button", { class: "menu-item danger", onclick: () => { closePop(); deleteProject(p); } }, "Delete project"))) }, "···");
   const more = el("div", { class: "row nowrap" }, el("button", { class: "link", onclick: rename }, "Rename"), menu);
   const row = (k) => el("button", { class: "m-set-row", onclick: () => go("project", { projectId: p.id, sec: k }) },
-    el("span", { class: "grow" }, parts[k].title), el("span", { class: "muted" }, parts[k].summary), el("span", { class: "chev" }, "›"));
+    el("span", { class: "grow" }, parts[k].title), el("span", { class: "muted" }, parts[k].summary), el("span", { class: "chev", "aria-hidden": "true" }, "›"));
   return [top(() => go("agents"), "Agents", more),
     title, projectChips(p, members),
     parts.pending ? projSection(`${parts.pending.title} · ${parts.pending.body.length}`, "", ...parts.pending.body) : "",

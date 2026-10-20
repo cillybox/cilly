@@ -64,6 +64,7 @@ VIEWS.agent = {
 };
 
 function switchTab(tab) {
+  saveScroll();
   UI.tab = tab;
   try { sessionStorage.setItem("cilly-view", JSON.stringify({ view: UI.view, agentId: UI.agentId, tab })); } catch { /* fine */ }
   SIGS = {};
@@ -71,12 +72,13 @@ function switchTab(tab) {
   mountTab(a);
   VIEWS.agent.update();
   pollAgent(true);
+  restoreScroll();
 }
 function mountTab(a) {
   AV.body.replaceChildren();
   AV.composer.replaceChildren();
   AV.composer.hidden = UI.tab !== "chat";
-  if (UI.tab === "chat") { AV.chat = el("div", { class: "chat" }); AV.blocks = null; AV.body.append(AV.chat); AV.composer.append(...composer(a)); AV.newBelow = false; AV.seenLast = null; }
+  if (UI.tab === "chat") { AV.chat = el("div", { class: "chat", role: "log", "aria-label": "Conversation" }); AV.blocks = null; AV.body.append(AV.chat); AV.composer.append(...composer(a)); AV.newBelow = false; AV.seenLast = null; }
   else if (UI.tab === "logs") mountLogs();
   else if (UI.tab === "files") AV.pane = AV.body.appendChild(el("div", { class: "files-wrap" }));
   else AV.pane = AV.body.appendChild(el("div", { class: "page-inner " + (["sandbox", "research"].includes(UI.tab) ? "widew" : "chatw") }));
@@ -319,7 +321,7 @@ function openSandboxTab() { closePop(); if (UI.tab !== "sandbox") switchTab("san
 function sandboxPop(a) {
   const checks = selftestList(a), failed = checks.filter((c) => !c.ok).length, blocked = blockedOf(a);
   const row = (label, value, cls) => el("button", { class: "sum-row", onclick: openSandboxTab },
-    el("span", { class: "k" }, label), el("span", { class: "v " + (cls || "") }, value), el("span", { class: "chev" }, "›"));
+    el("span", { class: "k" }, label), el("span", { class: "v " + (cls || "") }, value), el("span", { class: "chev", "aria-hidden": "true" }, "›"));
   const rows = [
     row("Self-test", !checks.length ? "not run yet" : failed ? `${failed} of ${checks.length} failed` : `All ${checks.length} passed`,
       !checks.length ? "muted" : failed ? "err" : "ok"),
@@ -785,7 +787,7 @@ function renderTabs(a) {
   const n = researchCount(a), blocked = blockedOf(a).length;
   if (!changed("tabs", [a.id, UI.tab, a.profile, n, blocked])) return;
   const tabs = [["chat", "Chat"], ["tasks", "Tasks"], ["files", "Files"], ["logs", "Logs"], ["sandbox", "Sandbox"], ["research", isResearch(a) ? "Findings" : "Research"]];
-  AV.tabs.replaceChildren(...tabs.map(([k, label]) => el("button", { class: "tab" + (UI.tab === k ? " on" : ""), role: "tab", onclick: () => switchTab(k) },
+  AV.tabs.replaceChildren(...tabs.map(([k, label]) => el("button", { class: "tab" + (UI.tab === k ? " on" : ""), role: "tab", "aria-selected": String(UI.tab === k), onclick: () => switchTab(k) },
     label, k === "research" && n ? el("span", { class: "count-badge" }, String(n)) : "",
     k === "sandbox" && blocked ? el("span", { class: "count-badge err" }, String(blocked)) : "")));
   AV.tabs.querySelector(".tab.on")?.scrollIntoView({ block: "nearest", inline: "nearest" });
@@ -1174,7 +1176,7 @@ function updateJump() {
 }
 function jumpDown() {
   AV.newBelow = false;
-  AV.body.scrollTo({ top: AV.body.scrollHeight, behavior: "smooth" });
+  AV.body.scrollTo({ top: AV.body.scrollHeight, behavior: SMOOTH });
 }
 function toolLine(verb, target, result, bad, live, bg) {
   return el("div", { class: "tool-line" }, el("span", { class: "verb", "data-verb": verb }, verb), el("span", { class: "target ellipsis", title: target }, target),
@@ -1292,7 +1294,7 @@ function renderRunning(a) {
     return el("button", { class: "running-row", title: "Show it in the chat", onclick: () => {
       const key = "a" + (s.call?.seq ?? s.id);
       OPEN_TOOLS.add(key); SIGS.chat = null; renderChat(agentById(UI.agentId));
-      AV.chat.querySelector(`[data-key="${CSS.escape(key)}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+      AV.chat.querySelector(`[data-key="${CSS.escape(key)}"]`)?.scrollIntoView({ block: "center", behavior: SMOOTH });
     } }, el("span", { class: "mono muted" }, s.type || (s.isAgent ? "agent" : "shell")), el("span", { class: "ellipsis" }, s.desc),
       el("span", { class: "grow ellipsis dim" }, s.now), s.bg && s.isAgent ? el("span", { class: "dim" }, "background") : "", time);
   };
@@ -2312,7 +2314,7 @@ function viewerOpen(raid, did) { return AV.viewer?.[0] === raid && AV.viewer?.[1
 function toggleViewer(raid, did, render) {
   AV.viewer = viewerOpen(raid, did) ? null : [raid, did];
   render();
-  if (AV.viewer) AV.pane.querySelector(".findings-view")?.scrollIntoView({ block: "start", behavior: "smooth" });
+  if (AV.viewer) AV.pane.querySelector(".findings-view")?.scrollIntoView({ block: "start", behavior: SMOOTH });
 }
 
 // ---- inject widget (Start popover and New agent) ----

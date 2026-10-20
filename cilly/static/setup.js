@@ -451,8 +451,7 @@ function setupChecklist() {
   return el("div", { class: "card flush checklist" },
     el("div", { class: "list-row" }, el("span", { class: "title grow" }, "Finish setting up"), el("span", { class: "muted" }, `${done} of ${items.length} done`), bar,
       el("button", { class: "link", title: "Hide this checklist", onclick: async () => { await api("POST", "/api/setup", { checklist_hidden: true }); await loadState(); VIEWS.new.update(true); } }, "Hide")),
-    ...items.map(([label, ok, action, onclick]) => el("div", { class: "list-row" }, el("span", { class: ok ? "ok" : "dim" }, ok ? "✓" : "○"),
-      el("span", { class: "grow " + (ok ? "muted" : "") }, label),
-      ok ? "" : el("button", { class: "link", onclick }, action))),
+    ...items.filter((i) => !i[1]).map(([label, , action, onclick]) => el("div", { class: "list-row" }, el("span", { class: "dim" }, "○"),  // the header counts the done ones
+      el("span", { class: "grow" }, label), el("button", { class: "link", onclick }, action))),
     bwrapCmd);
 }

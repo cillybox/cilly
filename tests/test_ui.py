@@ -8,6 +8,8 @@ import shutil
 import subprocess
 import unittest
 
+PHONE_MQ = "(max-width: 640px), (max-height: 500px) and (pointer: coarse)"  # keep in step with static/style.css and PHONE_QUERY in app.js
+
 STATIC = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "cilly", "static")
 FILES = ["app.js", "agent.js", "ask.js", "inbox.js", "viewer.js", "projects.js", "mobile.js", "setup.js", "voice.js", "pages.js"]
 
@@ -151,6 +153,40 @@ class UiTests(unittest.TestCase):
         """)
         self.assertEqual(got, [["Saved", "Agents get it at their next task."], ["Added example.com", "Applies live."], ["Uploading a.png…", ""],
                                ["Couldn't reach the server!", ""], ["Done.", ""]])
+
+    def test_an_undo_toast_has_a_button_that_runs_its_action(self):
+        got = self.run_js("""
+          const out = [];
+          toast("Archived x", false, { label: "Undo", fn: () => out.push("undone") });
+          const act = find(document.getElementById("toasts").kids[0], "toast-act");
+          out.push(!!act, act.textContent);
+          act.fire("click", {});
+          toast("Pinned", false);
+          out.push(!!find(document.getElementById("toasts").kids[1], "toast-act"));
+          console.log(JSON.stringify(out));
+        """)
+        self.assertEqual(got, [True, "Undo", "undone", False])
+
+    def test_edge_swipes_need_the_edge_and_a_mostly_horizontal_pull(self):
+        got = self.run_js("""
+          console.log(JSON.stringify([swipedIn(5, 300, 100, 320, 200), swipedIn(40, 300, 140, 300, 200), swipedIn(5, 300, 50, 300, 200),
+            swipedIn(5, 300, 100, 420, 200), swipedIn(5, 300, 100, 300, 900),
+            swipedOut(200, 300, 100, 310, 200), swipedOut(200, 300, 160, 300, 200), swipedOut(200, 300, 100, 450, 200)]));
+        """)
+        self.assertEqual(got, [True, False, False, False, False, True, False, False])
+
+    def test_a_screen_comes_back_at_the_place_you_left_it(self):
+        got = self.run_js("""
+          const page = { scrollTop: 0 };
+          $("main").querySelector = () => page;
+          Object.assign(UI, { view: "agents", agentId: null, projectId: null, sec: null });
+          page.scrollTop = 420; saveScroll();
+          page.scrollTop = 0; restoreScroll();
+          const back = page.scrollTop;
+          UI.view = "project"; UI.projectId = "p1"; page.scrollTop = 0; restoreScroll();
+          console.log(JSON.stringify([back, page.scrollTop, scrollKey()]));
+        """)
+        self.assertEqual(got, [420, 0, "project|p1|"])
 
     def test_the_line_under_an_agent(self):
         got = self.run_js("""
@@ -555,7 +591,7 @@ class UiTests(unittest.TestCase):
           console.log(JSON.stringify([side, rows(VIEWS.agents.p.list.kids), plus.attrs["aria-label"], went]));
         """)
         self.assertEqual(got, [["sb-caption:Projects+", "sb-project:Empty+", "sb-project:Busy▾", "sb-row:coderme/app⋮"],
-                               ["sb-caption:Projects+", "m-project-line:Empty›+", "m-project-line:Busy1 agent›▾", "sb-row:coderme/app⋮"],
+                               ["sb-caption:Projects+", "m-project-line:Empty+", "m-project-line:Busy1 agent▾", "sb-row:coderme/app⋮"],
                                "New agent in Empty", ["new", "p1"]])
 
     def test_the_phone_list_has_the_sidebar_groups(self):
@@ -574,7 +610,7 @@ class UiTests(unittest.TestCase):
           console.log(JSON.stringify(out));
         """)
         self.assertEqual(got[0], ["sb-caption:Pinned", "sb-row:pinnedme/app⋮", "sb-caption row nowrap:Projects+",
-                                  "m-project-line:Lantern1 suggested note2 agents›▾", "sb-row member:member3 queuedme/app⋮", "sb-caption:Other agents",
+                                  "m-project-line:Lantern1 suggested note2 agents▾", "sb-row member:member3 queuedme/app⋮", "sb-caption:Other agents",
                                   "sb-row:looseme/app⋮", "sb-caption sb-group:Archived (1)▸"])
         self.assertEqual(got[1], "Running and 3 queued")  # the full phrase is in the title
         self.assertEqual(got[2], ["sb-caption sb-group:Archived (1)▾", "sb-row archived:oldme/app⋮"])
@@ -816,21 +852,21 @@ class UiTests(unittest.TestCase):
 
     def test_the_finish_setting_up_checklist(self):
         got = self.run_js("""
-          const rows = (n) => n.kids.slice(1, 7).map((r) => r.textContent);
+          const rows = (n) => n.kids.slice(1, -1).map((r) => r.textContent);  // not the bubblewrap command after them
           const state = (setup, bwrap) => ({ tools: { qemu: 1, "qemu-img": 1, kvm: true, bwrap }, base_image: "base.qcow2",
             setup: Object.assign({ steps: [], claude: "missing", github: "missing", repos: 0 }, setup) });
           STATE = state({ steps: ["host", "policy"], claude: "saved" }, null);
           const some = setupChecklist();
           STATE = state({ steps: ["host", "secrets"] }, null);
-          const again = rows(setupChecklist())[1];
+          const again = rows(setupChecklist())[0];
           STATE = state({ steps: ["network", "policy"], claude: "saved", github: "saved", repos: 2 }, "/usr/bin/bwrap");
           const all = setupChecklist();
           STATE = state({ checklist_hidden: true }, null);
           console.log(JSON.stringify([some.kids[0].textContent, rows(some), again, all, setupChecklist()]));
         """)
         self.assertEqual(got, ["Finish setting up3 of 6 doneHide",
-                               ["✓Host check", "✓Claude login", "○GitHub token and repositoriesAdd token", "○Network allowlist reviewedReview",
-                                "✓Policy chosen", "○Install bubblewrap (optional)Show command"], "○Claude loginPaste it again", "", ""])
+                               ["○GitHub token and repositoriesAdd token", "○Network allowlist reviewedReview",
+                                "○Install bubblewrap (optional)Show command"], "○Claude loginPaste it again", "", ""])  # only what is left
 
     def test_vm_images_commands_and_source(self):
         got = self.run_js("""
@@ -1002,10 +1038,10 @@ class UiTests(unittest.TestCase):
             [["coder", "Running and 2 queued", "running"], ["web-fixer", "Waiting for you", "waiting"], ["Settlers", "Project", ""],
              ["Inbox", "Page", ""]],
             "New agent/Page, Pull requests/Page, Claude policy/Page, Settings/Page, Secrets/Settings, GitHub access/Settings, "
-            "Network/Settings, Local models/Settings, VM images/Settings, VM limits/Settings, This PC/Settings, Speech to text/Settings, Devices/Settings, "
+            "Local models/Settings, Network/Settings, VM images/Settings, VM limits/Settings, This PC/Settings, Speech to text/Settings, Devices/Settings, "
             "Appearance/Settings, Advanced/Settings",
             [["Settlers", "Project", ""], ["Settings", "Page", ""], ["Secrets", "Settings", ""], ["GitHub access", "Settings", ""],
-             ["Network", "Settings", ""], ["Local models", "Settings", ""], ["VM images", "Settings", ""], ["VM limits", "Settings", ""],
+             ["Local models", "Settings", ""], ["Network", "Settings", ""], ["VM images", "Settings", ""], ["VM limits", "Settings", ""],
              ["This PC", "Settings", ""],
              ["Speech to text", "Settings", ""], ["Devices", "Settings", ""], ["Appearance", "Settings", ""]],  # 12 at most
             [["Network", "Settings", ""]], 0, 12,
@@ -1101,7 +1137,7 @@ class UiTests(unittest.TestCase):
         """)
         self.assertEqual(got, [["Go to an agent, project or page…", 12, "true", "↑↓ to moveEnter to openEsc to close",
                                 None, "Nothing matches.", True, None, True],
-                               ["agent a3", "settings models", "settings secrets"]])  # the 12th item: the list shows 12
+                               ["agent a3", "settings network", "settings secrets"]])  # the 12th item: the list shows 12
 
     def test_the_quick_switcher_keeps_focus_and_closes_on_esc(self):
         got = self.run_js("""
@@ -1667,7 +1703,7 @@ class UiTests(unittest.TestCase):
 
     def test_vm_image_rows_stack_on_phones(self):
         css = read(os.path.join(STATIC, "style.css"))
-        phone = "".join(part.split("\n}\n")[0] for part in css.split("@media (max-width: 640px) {")[1:])
+        phone = "".join(part.split("\n}\n")[0] for part in css.split("@media %s {" % PHONE_MQ)[1:])
         self.assertIn(".image-line { grid-template-columns: minmax(0, 1fr) 36px;", phone)
         self.assertIn(".image-cards { grid-template-columns: 1fr; }", phone)
 
@@ -2135,7 +2171,7 @@ class UiTests(unittest.TestCase):
         self.assertIn("overflow-wrap: anywhere", text)
         self.assertNotIn("break-all", text)
 
-    def test_policy_modes_sit_side_by_side(self):
+    def test_policy_modes_are_a_list_under_a_full_width_header(self):
         got = self.run_js("""
           STATE = { role: "owner", policy_version: 3 };
           api = async () => ({ policy: { permission_mode: "dontAsk", claude_md: "", managed_settings: {} }, mcp_servers: {} });
@@ -2143,15 +2179,15 @@ class UiTests(unittest.TestCase):
           VIEWS.policy.mount(main);
           await Promise.resolve(); await Promise.resolve();
           const P = VIEWS.policy.p, head = main.kids[0], inner = main.kids[1].kids[0];
-          console.log(JSON.stringify([P.modes.className, P.modes.kids.map((k) => [k.kids[0].textContent, k.className.includes(" on")]),
+          console.log(JSON.stringify([P.modes.className, P.modes.kids.map((k) => [k.kids[1].kids[0].textContent, k.className.includes(" on")]),
             head.className, find(head, "page-title").textContent, find(head, "tip").textContent]));
         """)
-        self.assertEqual(got, ["mode-cards", [["bypassPermissions", False], ["dontAsk", True], ["acceptEdits", False]], "set-head bare", "Claude policy",
+        self.assertEqual(got, ["mode-list", [["bypassPermissions", False], ["dontAsk", True], ["acceptEdits", False]], "set-head bare", "Claude policy",
                                "Enforced in every agent VM. Installed root-owned at /etc/claude-code/, so agents can't change it. Saving applies live."])
         # the title in a full-width header, like an agent's, and what the policy is behind its (i)
         css = read(os.path.join(STATIC, "style.css"))
         self.assertIn(".mode-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));", css)
-        self.assertIn("@media (max-width: 640px) { .mode-cards { grid-template-columns: minmax(0, 1fr); } }", css)
+        self.assertIn("@media " + PHONE_MQ + " { .mode-cards { grid-template-columns: minmax(0, 1fr); } }", css)
 
     def test_text_in_a_nowrap_row_still_wraps(self):
         css = read(os.path.join(STATIC, "style.css"))
@@ -2160,13 +2196,13 @@ class UiTests(unittest.TestCase):
 
     def test_phone_layout_fixes(self):
         css = read(os.path.join(STATIC, "style.css"))
-        phone = "".join(re.findall(r"@media \(max-width: 640px\) \{(.*?)\n\}", css, re.S))
-        for rule in ("  .save-bar { left: 0; right: 0; transform: none; bottom: calc(65px + env(safe-area-inset-bottom));",
+        phone = "".join(re.findall(r"@media " + re.escape(PHONE_MQ) + r" \{(.*?)\n\}", css, re.S))
+        for rule in ("  .save-bar { padding: 12px 16px; }",
                      ".blocked-row > .grow.stack { flex-basis: 100%; }", ".fetch-row > .input, .fetch-row > .select { flex: 1 1 100%; }",
                      ".forward-card.row.nowrap { flex-wrap: wrap; }"):
             self.assertIn(rule, phone)
         self.assertIn(".seg.wrap button { flex: 1 1 auto; }", css)
-        self.assertRegex(css, r"@media \(min-width: 641px\) \{[^@]*\.m-page \{ width: 100%; max-width: 760px;")
+        self.assertRegex(css, r"@media \(min-width: 641px\) and \(not \(\(max-height: 500px\) and \(pointer: coarse\)\)\) \{[^@]*\.m-page \{ width: 100%; max-width: 760px;")
         got = self.run_js("""
           STATE = { role: "owner", repos: ["me/a"], agents_list: [{ id: "c1", name: "coder", profile: "coding" }] };
           api = async () => ({ prs: [], errors: [], files: [] });
@@ -2677,8 +2713,8 @@ class StyleTokenTests(unittest.TestCase):
         for rule in [".note-row {", ".opt-sec {", ".check-row {", ".image-pick {", ".repo-row {"]:
             line = self.css[self.css.index(rule):].split("\n")[0] + self.css[self.css.index(rule):].split("\n")[1]
             self.assertNotRegex(line.split("}")[0], r"padding: (9|10|11|13|14)px", rule)
-        self.assertIn(".toast, .look-bar, .conn-bar, .save-bar { box-shadow", self.css)  # one shadow for the floating bars
-        self.assertNotRegex(self.css[self.css.index(".save-bar { position: fixed"):].split("\n")[0], "box-shadow")
+        self.assertIn(".toast, .look-bar, .conn-bar { box-shadow", self.css)  # one shadow for the floating bars
+        self.assertNotRegex(self.css[self.css.index(".save-bar { flex: none"):].split("\n")[0], "box-shadow")  # the save bar is pinned, not floating
         self.assertIn(".setup-nav { flex-direction: column-reverse;", self.css)  # Continue on top, nothing runs off a phone
 
     def test_text_sizes_keep_to_whole_pixels(self):

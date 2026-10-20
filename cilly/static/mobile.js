@@ -34,7 +34,7 @@ function renderMobileNav() {
   $("app").classList.toggle("m-nav", NAV_VIEWS.has(UI.view) && !UI.sec);  // a project's or Settings' own screens have ← instead, like an agent
   for (const k of ["agents", "inbox", "prs", "more"]) {
     const b = $("m-nav-" + k);
-    if (b) { b.classList.toggle("on", NAV_TAB[UI.view] === k); b.toggleAttribute("aria-current", NAV_TAB[UI.view] === k); }
+    if (b) { b.classList.toggle("on", NAV_TAB[UI.view] === k); b.setAttribute("aria-current", NAV_TAB[UI.view] === k ? "page" : "false"); }
   }
 }
 
@@ -81,13 +81,13 @@ VIEWS.agents = {
         const row = el("button", { class: "m-project", onclick: () => go("project", { projectId: p.id }) },
           el("span", { class: "grow stack0" }, el("span", { class: "ellipsis" }, p.name),
             p.pending.length ? el("span", { class: "m-proj-note" }, `${plural(p.pending.length, "suggested note")}`) : ""),
-          count ? el("span", { class: "muted" }, plural(count, "agent")) : "", el("span", { class: "chev" }, "›"));
+          count ? el("span", { class: "muted" }, plural(count, "agent")) : "");
         const key = "p:" + p.id, closed = UI.closedGroups.has(key);
         const fold = el("button", { class: "icon-btn sb-fold", "aria-expanded": String(!closed), "aria-label": `${closed ? "Show" : "Hide"} the agents in ${p.name}`, onclick: () => {
           closed ? UI.closedGroups.delete(key) : UI.closedGroups.add(key); saveSidebarPrefs(); VIEWS.agents.update();
         } }, foldMark(!closed));
         parts.push(el("div", { class: "m-project-line" }, row, members.length ? fold : newHere(p)),  // an empty project is one line, with a +
-          ...(closed ? [] : members.map((a) => { const r = mRow(a); r.className += " member"; return r; })));
+          ...(closed ? [] : members.map((a) => { const r = sidebarRow(a, true); r.className += " member"; return r; })));
       }
       if (rest.length) parts.push(el("div", { class: "sb-caption" }, pinned.length || shown.length ? "Other agents" : "Agents"), ...rest.map(mRow));
       if (archived.length) {
@@ -151,7 +151,7 @@ function inboxCard(it) {
 VIEWS.more = {
   mount(main) {
     const host = el("div", { class: "sb-host m-host" });
-    const row = (label, sub, fn) => el("button", { class: "m-set-row", onclick: fn }, el("span", { class: "grow" }, label), sub ? el("span", { class: "muted" }, sub) : "", el("span", { class: "chev" }, "›"));
+    const row = (label, sub, fn) => el("button", { class: "m-set-row", onclick: fn }, el("span", { class: "grow" }, label), sub ? el("span", { class: "muted" }, sub) : "", el("span", { class: "chev", "aria-hidden": "true" }, "›"));
     const page = el("div", { class: "m-page" }, el("div", { class: "m-title-block" }, el("h1", { class: "m-h1" }, isOwner() ? "More" : "This device")));
     if (isOwner()) page.append(el("div", { class: "m-set-list" }, row("New project", "", () => newProject()),
       row("Claude policy", "", () => go("policy")), row("Settings", "", () => go("settings"))));
@@ -231,3 +231,30 @@ function phoneResize() {
   else go(UI.view, { agentId: UI.agentId, tab: UI.tab });
 }
 window.addEventListener("resize", phoneResize);
+
+// Edge swipes in the installed app, where the browser's own back swipe is gone (iOS): in from the left edge goes
+// up a level on a phone and opens the sidebar on a tablet, and a swipe left closes the drawer. Android has a
+// system back gesture on that edge, so the phone back swipe is iOS only.
+const EDGE_PX = 20, SWIPE_PX = 70, SWIPE_MS = 700;
+const swipedIn = (x0, y0, x1, y1, ms) => x0 <= EDGE_PX && x1 - x0 >= SWIPE_PX && Math.abs(y1 - y0) <= (x1 - x0) / 2 && ms < SWIPE_MS;
+const swipedOut = (x0, y0, x1, y1, ms) => x0 - x1 >= SWIPE_PX && Math.abs(y1 - y0) <= (x0 - x1) / 2 && ms < SWIPE_MS;
+const installedApp = () => window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+const onIos = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+function edgeSwipe(from, to) {
+  if (document.querySelector(".lightbox, .modal-back")) return;
+  const ms = Date.now() - from.t;
+  if (swipedIn(from.x, from.y, to.clientX, to.clientY, ms)) {
+    if (isPhone()) {
+      const up = onIos() && upTarget();
+      if (up) BACK_ARMED ? history.back() : (up(), syncBack());
+    } else if (window.innerWidth <= 767 ? !UI.drawer : UI.sbHidden) toggleSidebar();
+  } else if (UI.drawer && from.inDrawer && swipedOut(from.x, from.y, to.clientX, to.clientY, ms)) closeDrawer();
+}
+if (installedApp()) {
+  let from = null;
+  document.addEventListener("touchstart", (e) => {
+    const t = e.touches[0];
+    from = e.touches.length === 1 ? { x: t.clientX, y: t.clientY, t: Date.now(), inDrawer: !!e.target.closest?.("#sidebar, #backdrop") } : null;
+  }, { passive: true });
+  document.addEventListener("touchend", (e) => { if (from && e.changedTouches[0]) edgeSwipe(from, e.changedTouches[0]); from = null; }, { passive: true });
+}

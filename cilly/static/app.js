@@ -164,7 +164,49 @@ function imageSelect(value, onPick, profile) {  // "" = the default image for th
   s.addEventListener("change", () => onPick(s.value));
   return s;
 }
-const isPhone = () => window.matchMedia("(max-width: 640px)").matches;
+const PHONE_QUERY = "(max-width: 640px), (max-height: 500px) and (pointer: coarse)";  // narrow, or a phone on its side; keep in step with style.css
+const isPhone = () => window.matchMedia(PHONE_QUERY).matches;
+const SMOOTH = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+
+// Every .modal-back is a dialog: name it from its heading, keep Tab and the page behind it out of reach, and hand focus back on close.
+let DIALOG_OPENER = null, DIALOG_SEQ = 0;
+window.addEventListener("focusin", (e) => { if (!e.target.closest?.(".modal-back")) DIALOG_OPENER = e.target; });
+function dialogTab(e) {
+  if (e.key !== "Tab") return;
+  const back = e.currentTarget;
+  const items = [...back.querySelectorAll("button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])")].filter((n) => !n.disabled && n.offsetParent);
+  if (!items.length) return;
+  const first = items[0], last = items[items.length - 1];
+  if (e.shiftKey && (document.activeElement === first || !back.contains(document.activeElement))) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+}
+typeof MutationObserver !== "undefined" && new MutationObserver((muts) => {
+  for (const m of muts) {
+    for (const n of m.addedNodes) {
+      if (!n.classList?.contains("modal-back")) continue;
+      const dlg = n.querySelector("[role=dialog]") || n, h = dlg.querySelector("h3");
+      if (h && !dlg.hasAttribute("aria-label") && !dlg.hasAttribute("aria-labelledby")) { h.id = h.id || "dlg-h" + ++DIALOG_SEQ; dlg.setAttribute("aria-labelledby", h.id); }
+      if (!dlg.hasAttribute("role")) { dlg.setAttribute("role", "dialog"); dlg.setAttribute("aria-modal", "true"); }
+      n.addEventListener("keydown", dialogTab);
+      $("app").inert = true;
+    }
+    for (const n of m.removedNodes) {
+      if (!n.classList?.contains("modal-back") || document.querySelector(".modal-back")) continue;
+      $("app").inert = false;
+      if (DIALOG_OPENER?.isConnected) DIALOG_OPENER.focus({ preventScroll: true });
+    }
+  }
+}).observe(document.body, { childList: true });
+// Arrow keys move between the tabs of a tab list
+document.addEventListener("keydown", (e) => {
+  const tab = e.target?.closest?.("[role=tab]");
+  if (!tab || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+  const list = tab.parentElement, tabs = [...list.querySelectorAll("[role=tab]")], i = tabs.indexOf(tab);
+  const to = e.key === "Home" ? 0 : e.key === "End" ? tabs.length - 1 : (i + (e.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+  e.preventDefault();
+  tabs[to].click();
+  requestAnimationFrame(() => (list.querySelector("[role=tab][aria-selected=true]") || tabs[to]).focus());
+});
 function sw(on, onToggle, cls) {  // switch button
   const b = el("button", { class: "switch " + (cls || "") + (on ? " on" : ""), type: "button", role: "switch", "aria-checked": String(!!on) });
   b.addEventListener("click", () => onToggle(!b.classList.contains("on"), b));
@@ -197,7 +239,7 @@ function typingIn(node) {
 
 // ---- toast / modals / popovers ----
 // Toasts stack in the corner (the top on a phone). A click or tap closes one, a swipe too. They wait while the pointer is over them.
-const TOAST_MS = { ok: 4000, err: 8000 }, TOAST_MAX = 3;
+const TOAST_MS = { ok: 4000, err: 8000, undo: 7000 }, TOAST_MAX = 3;
 function toastParts(msg) {  // "Saved. Agents get it at their next task." is a title and its detail
   const m = /^(.{3,60}?[.!?])\s+(.+)$/s.exec(String(msg));
   return m ? [m[1].replace(/\.$/, ""), m[2]] : [String(msg), ""];
@@ -207,7 +249,7 @@ function toastIcon(isErr) {
   s.append(svg("circle", { cx: 10, cy: 10, r: 8 }), ...(isErr ? [svg("path", { d: "M10 5.8v5" }), svg("path", { d: "M10 13.8v.2" })] : [svg("path", { d: "m6.6 10.2 2.4 2.4 4.4-4.8" })]));
   return s;
 }
-function toast(msg, isErr) {
+function toast(msg, isErr, undo) {  // undo: { label, fn }, a button that takes the action back
   let box = document.getElementById("toasts");
   if (!box) { box = el("div", { class: "toasts", id: "toasts" }); document.body.append(box); }
   const [title, detail] = toastParts(msg), kind = isErr ? "err" : "ok";
@@ -216,10 +258,11 @@ function toast(msg, isErr) {
   let timer = null, from = null;
   const t = el("div", { class: "toast " + kind, role: isErr ? "alert" : "status", "data-msg": String(msg), "data-kind": kind, title: "Click to dismiss" },
     toastIcon(isErr), el("div", { class: "toast-text" }, el("div", { class: "toast-title" }, title), detail ? el("div", { class: "toast-detail" }, detail) : ""),
+    undo ? el("button", { class: "toast-act", type: "button", onclick: (e) => { e.stopPropagation(); gone(); undo.fn(); } }, undo.label) : "",
     el("button", { class: "toast-x", type: "button", "aria-label": "Dismiss" }, "✕"));
   const gone = () => { clearTimeout(timer); t.remove(); };
   const wait = (ms) => { clearTimeout(timer); timer = setTimeout(gone, ms); timer.unref?.(); };  // unref: a test run isn't held up by it
-  t.restart = () => wait(TOAST_MS[kind]);
+  t.restart = () => wait(TOAST_MS[undo ? "undo" : kind]);
   t.addEventListener("click", gone);
   t.addEventListener("pointerenter", () => clearTimeout(timer));
   t.addEventListener("pointerleave", () => { if (!t.matches(":active")) wait(2000); });
@@ -647,8 +690,30 @@ function checkInboxNotify() {  // new things waiting on you: a blocked site, a r
 }
 
 // ---- navigation ----
+// Where you were on each screen, so Back and a tab switch return to the same place. The chat keeps its own
+// place (it sticks to the newest message).
+const SCROLLS = new Map();
+const scrollKey = () => [UI.view, UI.agentId || UI.projectId || "", UI.view === "agent" ? UI.tab : UI.sec || ""].join("|");
+const scroller = () => (UI.view === "agent" ? (typeof AV !== "undefined" ? AV?.body : null) : $("main")?.querySelector?.(".m-page, .page"));
+function saveScroll() {
+  const s = scroller();
+  if (s && !(UI.view === "agent" && UI.tab === "chat")) SCROLLS.set(scrollKey(), s.scrollTop);
+}
+function restoreScroll() {
+  const key = scrollKey(), want = SCROLLS.get(key);
+  if (!want) return;
+  let tries = 0;
+  const step = () => {  // a page that is still loading can't scroll that far yet
+    const s = scroller();
+    if (!s || scrollKey() !== key) return;
+    s.scrollTop = want;
+    if (s.scrollTop < want - 2 && ++tries < 6) setTimeout(step, 120);
+  };
+  step();
+}
 function go(view, opts) {
   closePop();
+  saveScroll();
   if (view === "home" && isPhone()) view = "agents";  // a phone's home screen is the agent list
   if (!isOwner() && ["settings", "policy", "setup"].includes(view)) view = "more";  // PC only
   VIEWS[UI.view]?.unmount?.();
@@ -666,6 +731,7 @@ function go(view, opts) {
   VIEWS[view]?.update?.();
   syncBack();
   lookBar();
+  restoreScroll();
 }
 const VIEWS = {
   home: { mount: (m) => VIEWS.new.mount(m), update: () => VIEWS.new.update() },
@@ -678,7 +744,7 @@ function closeDrawer() {
   $("backdrop").hidden = true;
 }
 function toggleSidebar() {
-  if (window.innerWidth <= 900) {
+  if (window.innerWidth <= 767) {
     UI.drawer = !UI.drawer;
     $("app").classList.toggle("drawer-open", UI.drawer);
     $("backdrop").hidden = !UI.drawer;
@@ -686,7 +752,7 @@ function toggleSidebar() {
     UI.sbHidden = !UI.sbHidden;
     $("app").classList.toggle("sb-hidden", UI.sbHidden);
   }
-  $("sb-show").hidden = !(UI.sbHidden || window.innerWidth <= 900);
+  $("sb-show").hidden = !(UI.sbHidden || window.innerWidth <= 767);
 }
 function mountShell() {
   const app = $("app");
@@ -714,7 +780,7 @@ function mountShell() {
       el("span", { class: "panel-icon" }), el("span", { class: "dot-badge", id: "sb-show-dot", hidden: true })),
     el("main", { class: "main", id: "main" }));
   mountMobileNav();
-  $("sb-show").hidden = window.innerWidth > 900;
+  $("sb-show").hidden = window.innerWidth > 767;
 }
 // The line under an agent's name: its own summary (~/status.txt in the VM), else your last message, else where it works.
 function agentLine(a) {
@@ -821,7 +887,7 @@ function routeNote(name) {
 const newHere = (p) => el("button", { class: "icon-btn sb-add sb-here", title: `New agent in ${p.name}`, "aria-label": `New agent in ${p.name}`,
   onclick: () => { NEW.project = p.id; NEW.applied = null; go("new"); } }, "+");
 // ▾ open, ▸ closed (a pixel chevron in the Terminal style)
-const foldMark = (open) => el("span", { class: "fold-mark" + (open ? " open" : "") }, open ? "▾" : "▸");
+const foldMark = (open) => el("span", { class: "fold-mark" + (open ? " open" : ""), "aria-hidden": "true" }, open ? "▾" : "▸");
 function stateIcon(key) {
   const s = svg("svg", { width: 12, height: 12, viewBox: "0 0 12 12", class: "st-icon st-" + key, "aria-hidden": "true" });
   const add = (tag, attrs) => s.append(svg(tag, attrs));
@@ -904,7 +970,8 @@ function buildLine() {
   if (STATE.build?.state !== "running" || !isOwner()) return "";
   return el("button", { class: "link build-line", onclick: () => openSettings("images") }, el("span", { class: "pulse" }), "Building an image");
 }
-function sidebarRow(a) {
+const repeatsProjectRepo = (a) => !ownLine(a) && !!a.repo && (projectById(a.project)?.repos || []).includes(a.repo);  // the project row already says it
+function sidebarRow(a, underItsProject = false) {
   const row = el("div", { class: "sb-row" + (a.id === UI.agentId ? " active" : "") + (a.archived ? " archived" : "") });
   row.agentId = a.id;
   const menu = (anchor) => {
@@ -918,7 +985,7 @@ function sidebarRow(a) {
   const more = el("button", { class: "icon-btn sb-more", title: "Rename, pin, group, archive…", "aria-label": `Actions for ${a.name}`, "aria-haspopup": "menu", "aria-expanded": "false", onclick: (e) => {
     e.stopPropagation(); menu(more);
   } }, "⋮");
-  const line = () => el("div", { class: "l2 ellipsis", title: agentLine(a) }, agentLine(a));
+  const line = () => (underItsProject && repeatsProjectRepo(a) ? "" : el("div", { class: "l2 ellipsis", title: agentLine(a) }, agentLine(a)));
   // the open agent's row isn't redrawn on a click, so the second click of a double-click lands on it
   const open = () => (UI.view === "agent" && UI.agentId === a.id && UI.tab === "chat" ? closeDrawer() : go("agent", { agentId: a.id, tab: "chat" }));
   const l1 = (name) => { const [icon, rest] = rowState(a); return el("div", { class: "l1" }, icon, ...rest(name)); };
@@ -954,19 +1021,19 @@ function onHold(node, fn, ms = 500) {
 }
 // The ⋮ menu on an agent in the sidebar. For the open agent it shows the keys that do the same from anywhere.
 function agentListMenu(a, rename, toProjects) {
-  const organize = async (body, ok) => {
+  const organize = async (body, ok, undo) => {  // undo: the body that puts it back, offered on the toast
     try {
       await api("POST", `/api/agents/${a.id}/organize`, body);
-      if (ok) toast(ok);
+      if (ok) toast(ok, false, undo && { label: "Undo", fn: () => organize(undo, "Undone") });
     } catch (e) { toast(e.message, true); }
     closePop(); await loadState();
   };
   const stopped = !a.running && !["booting", "stopping"].includes(a.state);
   const actions = {
     r: () => { closePop(); rename(); },
-    p: () => organize({ pinned: !a.pinned }, a.pinned ? "Unpinned" : "Pinned"),
+    p: () => organize({ pinned: !a.pinned }, a.pinned ? "Unpinned" : "Pinned", { pinned: !!a.pinned }),
     m: () => showProjects(),
-    a: () => (a.archived ? organize({ archived: false }, "Back in the list") : stopped ? organize({ archived: true }, `Archived ${a.name}`) : toast("Stop it first", true)),
+    a: () => (a.archived ? organize({ archived: false }, "Back in the list", { archived: true }) : stopped ? organize({ archived: true }, `Archived ${a.name}`, { archived: false }) : toast("Stop it first", true)),
     d: async () => { closePop(); if (!isOwner()) return; if (await confirmModal(`Delete ${a.name}?`, "A running VM is killed immediately (no memory export). Logs are kept.", "Delete", true)) agentAction(a, "delete"); },
   };
   const keys = UI.view === "agent" && UI.agentId === a.id && !isPhone();  // a phone has no keys
@@ -984,8 +1051,8 @@ function agentListMenu(a, rename, toProjects) {
   function showProjects() {
     // moving it in gives it the project's instructions, sites, research agent and files
     box.replaceChildren(item("‹ Back", "", main),
-      ...(STATE.projects || []).map((p) => item(p.name, p.id === a.project ? "✓" : "", () => organize({ project: p.id }, `Moved to ${p.name}`))),
-      a.project ? item("No project", "", () => organize({ project: null }, "Moved to Other agents")) : "",
+      ...(STATE.projects || []).map((p) => item(p.name, p.id === a.project ? "✓" : "", () => organize({ project: p.id }, `Moved to ${p.name}`, { project: a.project || null }))),
+      a.project ? item("No project", "", () => organize({ project: null }, "Moved to Other agents", { project: a.project })) : "",
       isOwner() ? el("div", { class: "sep" }) : "",
       isOwner() ? item("New project…", "", () => { closePop(); newProject((p) => organize({ project: p.id }, `Moved to ${p.name}`)); }) : "");
     box.focus();
@@ -1108,8 +1175,8 @@ document.addEventListener("keydown", (e) => {
 });
 window.addEventListener("resize", () => {
   if (!$("sb-show")) return;  // the token page has no shell
-  $("sb-show").hidden = !(UI.sbHidden || window.innerWidth <= 900);
-  if (window.innerWidth > 900 && UI.drawer) closeDrawer();
+  $("sb-show").hidden = !(UI.sbHidden || window.innerWidth <= 767);
+  if (window.innerWidth > 767 && UI.drawer) closeDrawer();
 });
 
 // The panel makes a new token every time it starts, so a saved one stops working after a
@@ -1243,6 +1310,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   // keep watching in a background tab when notifications are on (browsers slow these timers down)
   setInterval(() => { if (!document.hidden || notePrefs().on) loadState(); }, 4000);
   setInterval(() => { if (!document.hidden || notePrefs().on) pollInbox(); }, 5000);
+  let lastReturn = 0;  // back from the background: fresh data now, not at the next tick
+  const refreshOnReturn = () => { if (document.hidden || Date.now() - lastReturn < 2000) return; lastReturn = Date.now(); loadState(); pollInbox(); };
+  document.addEventListener("visibilitychange", refreshOnReturn);
+  window.addEventListener("pageshow", refreshOnReturn);
   navigator.serviceWorker?.addEventListener("message", (e) => { if (e.data?.open && agentById(e.data.open)) go("agent", { agentId: e.data.open, tab: "chat" }); });
   if (notePrefs().on && canNotify() && Notification.permission === "granted") navigator.serviceWorker.register("/sw.js").catch(() => {});
 });

@@ -2,6 +2,7 @@
   "name": "cilly",
   "short_name": "cilly",
   "description": "Claude Code agents in their own VMs",
+  "id": "/",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

@@ -85,7 +85,7 @@ function fileBrowser(a, up, extras, strip) {  // extras: the toolbar's right end
     return el("button", { class: "fb-row" + (FB.sel?.path === path ? " sel" : ""), disabled: !open, onclick: open || undefined,
       ondblclick: e.kind === "file" ? () => openFile(a, FB.what, path, stamp) : undefined },
       el("span", { class: "fb-icon" }, fileIcon(e.kind)), el("span", { class: "ellipsis", title: e.name }, e.name), el("span", { class: "fb-meta" }, meta),
-      isPhone() ? el("span", { class: "chev" }, open ? "›" : "") : "");
+      isPhone() ? el("span", { class: "chev", "aria-hidden": "true" }, open ? "›" : "") : "");
   };
   const drawList = () => {
     if (!entries) return;

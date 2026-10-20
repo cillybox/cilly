@@ -49,7 +49,7 @@ function renderInboxBadge() {
   b.hidden = !INBOX.count;
   $("sb-show-dot").hidden = !INBOX.count;
   const m = $("m-inbox-count");
-  if (m) { m.textContent = String(INBOX.count); m.hidden = !INBOX.count; }
+  if (m) { m.textContent = String(INBOX.count); m.hidden = !INBOX.count; $("m-nav-inbox")?.setAttribute("aria-label", INBOX.count ? `Inbox, ${INBOX.count} waiting` : "Inbox"); }
 }
 function itemTitle(it) {
   if (it.kind === "questions") return it.questions.length === 1 ? it.questions[0].question : `${it.questions.length} questions for you`;
