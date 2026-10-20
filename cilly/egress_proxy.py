@@ -33,10 +33,11 @@ that need a token, this proxy answers the VM's TLS with a certificate from a CA 
 start (tlsca.py), checks the real site's certificate on the way out, and swaps the stand-in in
 the login headers for the real token.  Everything else stays a sealed tunnel.  It takes one
 HTTP/1.1 request per connection, parsed strictly, and masks the real tokens in the reply (chunked
-replies decoded first, compressed ones refused).  A
-GitHub token goes only with the agent's own repository (and GraphQL, which gh needs), and a
-push may be held to the agent's own branches: ones named after its id, ones it created (GitHub
-confirmed it, and they're kept in --branches-file), and new ones named the way the panel says.
+replies decoded first, compressed ones refused).  A GitHub token goes only with the agent's own
+repository (and GraphQL queries, which gh reads with, never a GraphQL change).  A push may be
+held to the agent's own branches: ones named after its id, ones it created (GitHub confirmed it,
+and they're kept in --branches-file), and new ones named the way the panel says.  On GitHub, no
+login goes out but the bot's.
 
 With ``--pipe HOST:PORT`` it is instead the ProxyCommand of cilly's SSH tunnels (sshtunnel.py):
 one connection to HOST:PORT through the route in --route-file, relayed to stdin and stdout.  The
@@ -827,6 +828,7 @@ MODEL_SUFFIX = "model.cilly.internal"  # <name>.model.cilly.internal: a model se
 # What an agent may ask a model server: Anthropic's Messages API, and the list of models.  Not, say,
 # Ollama's own API, which has no login and can pull or delete models.
 MODEL_PATHS = {("POST", "/v1/messages"), ("POST", "/v1/messages/count_tokens"), ("GET", "/v1/models")}
+GRAPHQL_BODY_MAX = 512 * 1024  # a GraphQL request with the token, read whole to check that it only reads
 MODEL_BODY_MAX = 32 * 1024 * 1024  # a long conversation with images; read whole to check which model it asks for
 MODEL_BODIES = threading.BoundedSemaphore(4)  # so a VM can't make the proxy hold many of them at once
 SHORT_KEY = 8  # a key this short ("EMPTY", "ollama") isn't masked in replies: it would garble them, and guards nothing
@@ -863,11 +865,64 @@ _CHANGES_REFS = re.compile(r"|/git/refs(?:/.*)?|/contents(?:/.*)?|/merges|/merge
 
 
 GITHUB_HOSTS = ("github.com", "api.github.com")
+GRAPHQL_REFUSED = ("cilly lets agents read through GitHub's GraphQL API, not change anything with it. "
+                   "cilly opens and updates the pull request itself, from ~/pull-request.md.")
+_GQL_TOKEN = re.compile(r'[\s,\ufeff]+|#[^\n\r]*|(?P<str>"""(?:\\"""|(?!""")[\s\S])*"""|"(?:\\.|[^"\\\n\r])*")'
+                        r"|(?P<tok>\.\.\.|[!$&():=@\[\]{}|]|[A-Za-z_][A-Za-z0-9_]*|-?[0-9][A-Za-z0-9_.+-]*)")
+
+
+def _graphql_tokens(text: str) -> list[str]:
+    """A GraphQL document's tokens, with every string as one '"', so nothing inside a string counts.
+    Raises ValueError for anything that isn't GraphQL."""
+    out, pos = [], 0
+    while pos < len(text):
+        m = _GQL_TOKEN.match(text, pos)
+        if not m:
+            raise ValueError("not GraphQL")
+        if m.group("str"):
+            out.append('"')
+        elif m.group("tok"):
+            out.append(m.group("tok"))
+        pos = m.end()
+    return out
+
+
+def graphql_reads_only(doc) -> bool:
+    """Whether a GraphQL request only reads: one document whose operations are all queries, with
+    fragments allowed.  A mutation, a subscription, a batch or anything cilly can't read is a no."""
+    if not isinstance(doc, dict) or not isinstance(doc.get("query"), str):
+        return False
+    try:
+        toks = _graphql_tokens(doc["query"])
+    except ValueError:
+        return False
+    i, n = 0, len(toks)
+    if not n:
+        return False
+    while i < n:
+        if toks[i] in ("query", "fragment"):
+            parens = 0
+            while i < n and (parens or toks[i] != "{"):  # the name, variables, type condition, directives
+                parens += {"(": 1, ")": -1}.get(toks[i], 0)
+                if parens < 0:
+                    return False
+                i += 1
+        elif toks[i] != "{":  # not the shorthand for a query: mutation, subscription or unknown
+            return False
+        depth = 0
+        while i < n:  # the selection set, to its closing brace
+            depth += {"{": 1, "}": -1}.get(toks[i], 0)
+            i += 1
+            if depth == 0:
+                break
+        if depth:
+            return False
+    return True
 
 
 def token_allowed(token: dict, host: str, method: str, target: str) -> bool:
     """Whether this token may go with this request.  A GitHub token goes only with the agent's own
-    repository (git, and the REST API), GraphQL (gh needs it), /user and /rate_limit."""
+    repository (git, and the REST API), GraphQL queries (gh reads with them), /user and /rate_limit."""
     if host not in token["hosts"]:
         return False
     g = token.get("github")
@@ -882,7 +937,9 @@ def token_allowed(token: dict, host: str, method: str, target: str) -> bool:
         return bool(m) and m.group(1).lower() == repo
     if host == "api.github.com":
         p = path.lower()
-        if p == "/graphql" or (p in ("/user", "/rate_limit") and method == "GET"):
+        if p == "/graphql":
+            return method == "POST" and "?" not in target  # and only a query: _one_request reads the body first
+        if p in ("/user", "/rate_limit") and method == "GET":
             return True
         if p != f"/repos/{repo}" and not p.startswith(f"/repos/{repo}/"):
             return False
@@ -1488,7 +1545,7 @@ class Proxy:
             raise ValueError("a request cilly can't frame safely")
         if [v.lower() for n, v in lower if n == "host"] not in ([host], [f"{host}:443"]):
             raise ValueError("the Host header doesn't name the site")
-        out, used, push, written, foreign = [], False, None, [], False
+        out, used, push, written, foreign, graphql = [], False, None, [], False, False
         if model is not None:
             path = target.split("?", 1)[0]
             messages = path == "/v1/messages"
@@ -1519,6 +1576,8 @@ class Proxy:
                     written.append(value)  # what we wrote is masked too, should a site echo it back
                 if ok and t.get("github") and t["github"]["push"] is not None:
                     push = t["github"]["push"]
+                if ok and t.get("github") and host == "api.github.com" and target.split("?", 1)[0].lower() == "/graphql":
+                    graphql = True
             if value is not None and not ours and host in GITHUB_HOSTS and (auth or low == "cookie"):
                 foreign = True
                 continue  # GitHub sees an agent only as the bot, never with a login it brought itself
@@ -1549,6 +1608,17 @@ class Proxy:
                 tls.sendall(b"HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nConnection: close\r\n"
                             b"Content-Length: %d\r\n\r\n%s" % (len(reply), reply))
                 return "400"
+            body, te = [data], []
+            out = [(n, v) for n, v in out if n.lower() not in ("transfer-encoding", "content-length")] \
+                + [("Content-Length", str(len(data)))]
+        if graphql:  # the bot's token goes along: only to read
+            data = self._graphql_body(body, lower)
+            if data is None:
+                reply = json.dumps({"message": GRAPHQL_REFUSED, "errors": [{"type": "FORBIDDEN", "message": GRAPHQL_REFUSED}]}).encode()
+                tls.sendall(b"HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\nConnection: close\r\n"
+                            b"Content-Length: %d\r\n\r\n%s" % (len(reply), reply))
+                self.log(action="deny", host=host, port=443, reason="a GraphQL change, which cilly doesn't let through", code="graphql")
+                return "refused graphql"
             body, te = [data], []
             out = [(n, v) for n, v in out if n.lower() not in ("transfer-encoding", "content-length")] \
                 + [("Content-Length", str(len(data)))]
@@ -1635,6 +1705,26 @@ class Proxy:
             if buf[:2] != b"\r\n":
                 raise ValueError("a chunk without its line break")
             del buf[:2]
+
+    @staticmethod
+    def _graphql_body(body, lower: list) -> bytes | None:
+        """A GraphQL request, whole, when it only reads (graphql_reads_only).  None when it doesn't."""
+        if any(n == "content-encoding" for n, _ in lower):
+            return None
+        data = bytearray()
+        for piece in body:
+            data += piece
+            if len(data) > GRAPHQL_BODY_MAX:
+                raise ValueError("a GraphQL request too large to check")
+        def once(pairs):  # a key twice could show this check one query and GitHub another
+            if len({k for k, _ in pairs}) != len(pairs):
+                raise ValueError("a key twice")
+            return dict(pairs)
+        try:
+            doc = json.loads(bytes(data), object_pairs_hook=once)
+        except (ValueError, RecursionError):
+            return None
+        return bytes(data) if graphql_reads_only(doc) else None
 
     @staticmethod
     def _model_body(body, want: str) -> tuple[bytes, dict]:

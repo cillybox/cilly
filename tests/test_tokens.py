@@ -222,9 +222,9 @@ class TokenTests(unittest.TestCase):
             if not real:
                 self.assertNotIn("Authorization", self.sent())  # anonymous, as for any public repository
 
-    def test_the_api_token_only_for_its_repository_and_graphql(self):
+    def test_the_api_token_only_for_its_repository(self):
         p = self.proxy()
-        for path, real in (("/repos/owner/repo/pulls", True), ("/repos/Owner/Repo", True), ("/graphql", True),
+        for path, real in (("/repos/owner/repo/pulls", True), ("/repos/Owner/Repo", True), ("/graphql", False),
                            ("/user", True), ("/rate_limit", True), ("/repos/owner/other/pulls", False), ("/orgs/owner/repos", False),
                            ("/repos/owner/repo/%2e%2e/x", False)):
             self.ask(p, "api.github.com", self.req("GET", "api.github.com", path, [("Authorization", f"token {GH}")]))
@@ -251,6 +251,48 @@ class TokenTests(unittest.TestCase):
             self.ask(p, "api.github.com", self.req(method, "api.github.com", "/user",
                                                    [("Authorization", f"token {GH}"), ("Content-Length", "2")], b"{}"))
             self.assertNotIn("Authorization", self.sent(), method)
+
+    def graphql(self, p, query, chunked=False, **extra):
+        body = json.dumps({"query": query, **extra}).encode() if isinstance(query, str) else query
+        framing = [("Transfer-Encoding", "chunked")] if chunked else [("Content-Length", str(len(body)))]
+        if chunked:
+            body = b"%x\r\n%s\r\n0\r\n\r\n" % (len(body), body)
+        return self.ask(p, "api.github.com", self.req("POST", "api.github.com", "/graphql",
+                                                      [("Authorization", f"bearer {GH}"), *framing], body))
+
+    def test_graphql_with_the_token_only_reads(self):
+        """gh reads pull requests and checks over GraphQL, but a mutation could change any branch or
+        repository the token reaches, past the push rule.  So a change never goes out with the token."""
+        p = self.proxy()
+        reads = ("{ viewer { login } }",
+                 'query PR($n: Int = 5) { repository(owner: "owner", name: "repo") { pullRequests(first: $n) { nodes { ...F } } } }'
+                 " fragment F on PullRequest { title }",
+                 '# mutation { deleteRef }\nquery { search(query: "} mutation {", type: REPOSITORY, first: 1) { repositoryCount } }')
+        for i, q in enumerate(reads):
+            out = self.graphql(p, q, chunked=bool(i % 2), variables={"n": 3})
+            self.assertIn(f"Authorization: bearer {GH_REAL}", self.sent(), q)
+            self.assertEqual(json.loads(self.sites.got[-1][1])["query"], q)  # passed on whole
+            self.assertIn(b"HTTP/1.1 200", out)
+        before = len(self.sites.got)
+        for q in ('mutation { updateRef(input: {refId: "x", oid: "y"}) { clientMutationId } }',
+                  "mutation M { createCommitOnBranch(input: {}) { commit { oid } } }",
+                  "query { viewer { login } } mutation { deleteRef(input: {}) { clientMutationId } }",
+                  "subscription { x }", "{ viewer { login }", "Query { a }",
+                  b'[{"query": "{ viewer { login } }"}]', b"not json", b'{"extensions": {"persistedQuery": {}}}',
+                  b'{"query": "{ viewer { login } }", "query": "mutation { deleteRef(input: {}) { clientMutationId } }"}'):
+            out = self.graphql(p, q)
+            self.assertIn(b"HTTP/1.1 403", out, q)
+            self.assertIn(b"pull-request.md", out)
+        self.assertEqual(len(self.sites.got), before)  # none of them reached GitHub
+        with open(os.path.join(self.tmp.name, "egress.log")) as f:
+            self.assertIn('"code": "graphql"', f.read())
+        self.ask(p, "api.github.com", self.req("GET", "api.github.com", "/graphql?query=%7Bviewer%7Blogin%7D%7D",
+                                               [("Authorization", f"bearer {GH}")]))
+        self.assertNotIn("Authorization", self.sent())  # GitHub's GraphQL is POST only
+        body = json.dumps({"query": "{ viewer { login } }"}).encode()
+        self.ask(p, "api.github.com", self.req("POST", "api.github.com", "/graphql?query=mutation", [
+            ("Authorization", f"bearer {GH}"), ("Content-Length", str(len(body)))], body))
+        self.assertNotIn("Authorization", self.sent())  # and the query is only ever the body
 
     def test_github_never_gets_a_token_that_isnt_held_to_a_repository(self):
         """An entry without its repository (none of cilly's own has one) goes nowhere on GitHub,
