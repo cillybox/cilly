@@ -1732,6 +1732,10 @@ class App:
                 text = "Have a look at the attached file." if len(ids) == 1 else "Have a look at the attached files."
             if ag.meta.get("yolo_rounds") or ag.meta.get("yolo_paused"):
                 ag.set(yolo_rounds=0, yolo_paused=False)  # a message from you starts the YOLO count again
+            with ag.lock:  # question files that were refused: the agent never learns that unless it's told
+                untold = [r for r in ag.meta.get("asks", []) if r.get("tell")]
+            if untold:
+                text = "\n\n".join(filter(None, [text, AK.refused_note(untold)]))
             payload = self._task_payload(ag, text,
                                          new_branch=bool(body.get("new_branch")),
                                          cont=bool(body.get("continue", True)),
@@ -1760,6 +1764,11 @@ class App:
                 for r in ag.meta.get("asks", []):
                     if r["state"] == "open":
                         r["state"] = "chat"
+                for r in untold:
+                    r.pop("tell", None)
+                    r["told"] = t["id"]
+                if untold:
+                    ag.save_meta()
             return {"task": t["id"], "agent": ag.public()}
         except VMError as e:
             raise ApiError(str(e)) from None
@@ -2562,11 +2571,13 @@ class App:
                 try:
                     rec.update(state="open", questions=self.manager.redact_obj(ag, AK.parse(name, f.get("text"))))
                 except AK.AskError as e:
-                    rec.update(state="refused", error=str(e))
+                    rec.update(state="refused", error=str(e), tell=True)  # your next message tells the agent
                 new.append(rec)
             if len(files) > AK.FILES_MAX:
-                new.append({"id": secrets.token_hex(4), "task": tid, "created": now, "name": "?", "state": "refused",
+                new.append({"id": secrets.token_hex(4), "task": tid, "created": now, "name": "?", "state": "refused", "tell": True,
                             "error": f"only {AK.FILES_MAX} question files are read after a task, {len(files) - AK.FILES_MAX} more were dropped"})
+            for r in ag.meta.get("asks", []):  # an older batch's refusals are out of date now
+                r.pop("tell", None)
             newest = next((r for r in reversed(new) if r["state"] == "open"), None)
             if newest:  # one open set at a time: the newest replaces the others
                 for r in ag.meta.get("asks", []) + new:

@@ -99,6 +99,15 @@ def answers(questions: list, given) -> list:
     return out
 
 
+def refused_note(recs: list) -> str:
+    """Added to your next message: which question files weren't shown, and why.  Without it the agent
+    waits for answers that never come.  The reasons are the panel's own words, never text from the VM."""
+    lines = [f"- ~/ask/{r['name']}: {r['error']}" if r["name"] != "?" else f"- {r['error']}" for r in recs]
+    return ("A note from cilly. The user never saw your questions, because these files were refused:\n" + "\n".join(lines)
+            + f"\nIf you still need answers, write them again with {QUESTIONS[0]} to {QUESTIONS[1]} questions per file "
+            f"and {OPTIONS[0]} to {OPTIONS[1]} options per question.")
+
+
 def answer_message(name: str, questions: list, picked: list) -> str:
     """The message the agent gets: each question quoted, with the answer under it."""
     parts = [f"My answers to your questions in ~/ask/{name}:"]

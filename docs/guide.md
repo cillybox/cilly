@@ -73,7 +73,7 @@ An agent talks to the panel through a few plain files in its home folder. None o
   - 2 to 4 `options`, each with a `label` (at most 80 characters) and an optional one-line `description` (at most 200);
   - `multi`, which is true when several options may be picked.
 - The recommended option comes first.
-- Unknown keys are ignored. Anything else, or a file over 16 KiB, is refused, and the chat says why.
+- Unknown keys are ignored. Anything else, or a file over 16 KiB, is refused, and the chat says why. Your next message to the agent ends with a note from cilly that names each refused file and the reason, so the agent can ask again within the limits.
 - After a task, at most 4 files are read, and the newest valid set replaces any that are still open.
 
 The questions appear above the message box in an amber card headed with the agent's name ("coder is asking"), and the agent shows as **Waiting for you**. The picker works like this:

@@ -188,7 +188,8 @@ function askStrip(a, rec) {
 function askCard(r) {
   const head = (text, cls) => el("div", { class: "top" }, el("span", { class: "accent-fg" }, "Questions"),
     el("span", { class: "muted ellipsis" }, `~/ask/${r.name}`), el("span", { class: "grow" }), el("span", { class: "tag " + (cls || "") }, text));
-  if (r.state === "refused") return el("div", { class: "req-card ask-card" }, head("refused", "err"), el("div", { class: "err-text small" }, `Not shown: ${r.error}.`));
+  if (r.state === "refused") return el("div", { class: "req-card ask-card" }, head("refused", "err"), el("div", { class: "err-text small" }, `Not shown: ${r.error}.`),
+    r.tell || r.told ? el("div", { class: "muted small" }, r.told ? "Your next message told the agent why." : "Your next message tells the agent why, so it can ask again.") : "");
   const word = { open: ["waiting for you", "warn"], answering: ["sending", ""], answered: ["answered", "ok"], chat: ["answered in the chat", ""], replaced: ["replaced by newer ones", ""] }[r.state] || [r.state, ""];
   return el("div", { class: "req-card ask-card" }, head(...word),
     el("div", { class: "ask-review" }, r.questions.map((q, i) => el("div", { class: "row nowrap" },

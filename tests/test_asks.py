@@ -78,6 +78,13 @@ class FormatTests(unittest.TestCase):
                 AK.answers(qs, bad)
             self.assertIn(why, str(e.exception), bad)
 
+    def test_the_note_on_refused_files(self):
+        self.assertEqual(AK.refused_note([{"name": "plan.json", "error": "it needs 1 to 4 questions"},
+                                          {"name": "?", "error": "the file isn't valid JSON"}]),
+                         "A note from cilly. The user never saw your questions, because these files were refused:\n"
+                         "- ~/ask/plan.json: it needs 1 to 4 questions\n- the file isn't valid JSON\n"
+                         "If you still need answers, write them again with 1 to 4 questions per file and 2 to 4 options per question.")
+
     def test_the_agent_is_told_how_to_ask_in_plain_terms(self):
         from cilly.server import vm_notes
         for meta in ({"mode": "persistent", "repo": "me/repo"}, {"mode": "ephemeral"}, {"mode": "persistent", "profile": "research"}):
@@ -218,6 +225,25 @@ class RoundTripTests(unittest.TestCase):
                           "question 1: the header i", "only 4 question files ar"])
         self.assertEqual(recs[1]["name"], "?")  # a bad name isn't kept
         self.assertFalse([it for it in self.app.api_inbox({})["items"] if it["kind"] == "questions"])
+        # your next message tells the agent why, in the panel's words, and only once
+        told = self.message("go on")
+        note = told["instructions"].split("\n\n", 1)
+        self.assertEqual(note[0], "go on")
+        self.assertTrue(note[1].startswith("A note from cilly. The user never saw your questions, because these files were refused:\n"
+                                           "- ~/ask/big.json: the file is larger than 16 KiB\n- the file name must be"), note[1])
+        self.assertEqual(note[1].count("\n- "), 5)
+        self.assertEqual({r["told"] for r in recs}, {told["id"]})
+        self.assertFalse(any("tell" in r for r in recs))
+        self.assertEqual(self.message("and again")["instructions"], "and again")
+
+    def test_a_newer_batch_makes_older_refusals_out_of_date(self):
+        one, two = self.message("hi")["id"], self.message("more")["id"]  # two tasks that end without a message from you between
+        self.app.on_questions(self.ag, {"task": one, "files": [{"name": "a.json", "text": "{"}]})
+        self.app.on_questions(self.ag, {"task": two, "files": [{"name": "b.json", "text": doc()}]})
+        first, second = self.ag.meta["asks"]
+        self.assertEqual((first["state"], second["state"]), ("refused", "open"))
+        self.assertNotIn("tell", first)  # the agent asked again since, so a.json is old news
+        self.assertEqual(self.message("thanks")["instructions"], "thanks")
 
     def test_one_open_set_and_secrets_hidden(self):
         tid = self.message("hi")["id"]

@@ -468,6 +468,8 @@ class UiTests(unittest.TestCase):
           out.push(node.textContent);
           out.push(askCard(Object.assign({}, rec, { state: "answered", answers: [{ picked: ["MySQL"], other: "" }, { picked: ["Bank"], other: "and a bank" }] })).textContent);
           out.push(askCard({ id: "q2", name: "?", state: "refused", error: "the file isn't valid JSON" }).textContent);
+          out.push(askCard({ id: "q3", name: "a.json", state: "refused", error: "it needs 1 to 4 questions", tell: true }).textContent);
+          out.push(askCard({ id: "q4", name: "a.json", state: "refused", error: "it needs 1 to 4 questions", told: "t9" }).textContent);
           out.push([itemTitle({ kind: "questions", questions: rec.questions }), itemSummary({ kind: "questions", questions: rec.questions })]);
           console.log(JSON.stringify(out));
         """)
@@ -477,6 +479,8 @@ class UiTests(unittest.TestCase):
             "coder is askingAnswer in chat instead✓ Database✓ FeaturesSubmitYour answersDatabaseMySQLFeaturesBank, “and a bank”Submit answers",
             "Questions~/ask/plan.jsonansweredDatabaseMySQLFeaturesBank, “and a bank”",
             "Questions~/ask/?refusedNot shown: the file isn't valid JSON.",
+            "Questions~/ask/a.jsonrefusedNot shown: it needs 1 to 4 questions.Your next message tells the agent why, so it can ask again.",
+            "Questions~/ask/a.jsonrefusedNot shown: it needs 1 to 4 questions.Your next message told the agent why.",
             ["2 questions for you", "Database, Features"]])
 
     def test_the_picker_takes_the_keyboard_unless_you_are_writing(self):
