@@ -1033,6 +1033,53 @@ class UiTests(unittest.TestCase):
         self.assertIn("It ran on qwen3.5:9b, a model on your own server.", got[2])
         self.assertIn("including what the agent read in your files", got[2])
 
+    def test_a_model_server_can_be_edited(self):
+        """Edit shows a server's settings, filled in, and Save sends just those. The name stays, and so
+        do its key and confirmed host key on the server's side. Going from SSH to direct asks first."""
+        got = self.run_js("""
+          const posts = [], toasts = [], asked = [];
+          let saved = null;
+          globalThis.api = async (m, u, b) => {
+            if (m === "POST") posts.push([u, JSON.parse(JSON.stringify(b))]);
+            if (u === "/api/models/servers") { saved = { rented: Object.assign({ api_key: false, secret: {} }, { url: b.url }, b.ssh ? { ssh: b.ssh } : {}) }; return { servers: saved, ssh: {} }; }
+            return { servers: {} };
+          };
+          toast = (t) => toasts.push(t); confirmModal = async (title) => { asked.push(title); return true; };
+          loadState = () => {}; renderSecretsSoon = () => {};
+          STATE = { routes: { names: ["vpn"], kinds: { vpn: "wireguard" }, tor: {} } };
+          const ssh = { host: "203.0.113.20", port: 22, user: "root", route: "direct", public_key: "ssh-ed25519 AAAA cilly-rented" };
+          const T = modelsTab({ model_servers: { rented: { url: "http://127.0.0.1:11434", api_key: false, ssh } } });
+          const tick = () => new Promise((r) => setTimeout(r, 0));
+          const all = (n, f, out = []) => { if (n instanceof Node) { if (f(n)) out.push(n); n.kids.forEach((k) => all(k, f, out)); } return out; };
+          const edit = () => find(T.node, "models-edit");
+          const inEdit = (label) => all(edit(), (n) => n.attrs["aria-label"] === label)[0];
+          const button = (root, text) => all(root, (n) => n.tag === "button" && n.textContent === text)[0];
+          await tick();
+          const before = !!edit();
+          button(T.node, "Edit").fire("click");
+          const filled = [inEdit("How to reach it").value, inEdit("SSH server").value, inEdit("SSH port").value, inEdit("SSH user").value, inEdit("Address").value];
+          inEdit("SSH port").value = "2222"; inEdit("Address").value = "http://127.0.0.1:18000";
+          button(edit(), "Save").fire("click");
+          await tick(); await tick();
+          const first = posts.filter(([u]) => u === "/api/models/servers").pop();
+          const closed = !edit();
+          button(T.node, "Edit").fire("click");
+          inEdit("How to reach it").value = "direct";
+          button(edit(), "Save").fire("click");
+          await tick(); await tick();
+          const second = posts.filter(([u]) => u === "/api/models/servers").pop();
+          console.log(JSON.stringify([before, filled, first, closed, toasts, asked, second]));
+        """)
+        before, filled, first, closed, toasts, asked, second = got
+        self.assertFalse(before)
+        self.assertEqual(filled, ["ssh", "203.0.113.20", "22", "root", "http://127.0.0.1:11434"])
+        self.assertEqual(first[1], {"name": "rented", "api_key": False, "url": "http://127.0.0.1:18000",
+                                    "ssh": {"host": "203.0.113.20", "port": 2222, "user": "root", "route": "direct"}})
+        self.assertTrue(closed)
+        self.assertIn("another SSH server now", toasts[0])
+        self.assertEqual(asked, ["Reach rented directly?"])
+        self.assertEqual(second[1], {"name": "rented", "api_key": False, "url": "http://127.0.0.1:18000"})
+
     def test_the_quick_switcher_keys(self):
         got = self.run_js("""
           const ag = (id, name) => ({ id, name, tasks: [], status: { key: "idle" } });

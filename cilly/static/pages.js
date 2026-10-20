@@ -1409,7 +1409,7 @@ async function renderSecretsSoon() {
 }
 // Settings → Local models: the model servers you run, each with its models and a test, and a form to add one
 function modelsTab(c) {
-  const T = { servers: JSON.parse(JSON.stringify(c.model_servers || {})), lists: {}, results: {}, ssh: {}, keys: {} };
+  const T = { servers: JSON.parse(JSON.stringify(c.model_servers || {})), lists: {}, results: {}, ssh: {}, keys: {}, edit: {} };
   const list = el("div", { class: "stack" });
   const status = (name) => {
     const got = T.lists[name];
@@ -1438,10 +1438,14 @@ function modelsTab(c) {
           el("span", { class: "mono small muted" }, s.url),
           s.ssh ? el("span", { class: "small muted" }, `Over SSH to ${s.ssh.user}@${s.ssh.host}${s.ssh.port === 22 ? "" : ":" + s.ssh.port}${s.ssh.route === "direct" ? "" : " · " + routeLabel(s.ssh.route)}`) : ""),
         el("button", { class: "btn small", disabled: !!res?.busy, onclick: test }, "Test"),
+        T.edit[name] ? "" : el("button", { class: "btn small ghost", onclick: () => {
+          T.edit[name] = editForm(name, s); render(); T.edit[name].F.url.focus();
+        } }, "Edit"),
         el("button", { class: "btn small ghost", onclick: async () => {
           if (await confirmModal(`Remove ${name}?`, "Agents on one of its models can't reach it any more. Pick another model for them.", "Remove", true)
               && await saveServer({ name, remove: true })) toast(`Removed ${name}`);
         } }, "Remove")),
+      T.edit[name] ? T.edit[name].node : "",
       got.error ? el("span", { class: "err small pretty" }, `Can't list its models: ${got.error}`) : "",
       (got.models || []).length ? el("div", { class: "row tight" }, ...got.models.map((m) =>
         el("span", { class: "tool-chip" + (small[m] ? " warn" : "") }, small[m] ? `${m} · ${Math.round(small[m] / 1024)}k context` : m))) : "",
@@ -1503,8 +1507,17 @@ function modelsTab(c) {
       tunnel?.error ? el("span", { class: "err small pretty" }, `Tunnel: ${tunnel.error}`)
         : tunnel?.ready ? el("span", { class: "ok small" }, `Tunnel up on this PC's port ${tunnel.port}`) : "");
   };
-  const render = () => list.replaceChildren(...(Object.keys(T.servers).length
-    ? Object.entries(T.servers).map(([n, s]) => card(n, s)) : [el("div", { class: "dashed-empty" }, "No model servers yet. Add one below, like Ollama or llama.cpp.")]));
+  // a redraw (a model list that came in, say) keeps an edit form's fields, and the one you were typing in
+  const render = () => {
+    const f = document.activeElement, typing = f?.closest?.(".models-edit") ? [f, f.selectionStart, f.selectionEnd] : null;
+    for (const n of Object.keys(T.edit)) if (!T.servers[n]) delete T.edit[n];  // removed meanwhile
+    list.replaceChildren(...(Object.keys(T.servers).length
+      ? Object.entries(T.servers).map(([n, s]) => card(n, s)) : [el("div", { class: "dashed-empty" }, "No model servers yet. Add one below, like Ollama or llama.cpp.")]));
+    if (typing && document.contains(typing[0])) {
+      typing[0].focus();
+      try { typing[0].setSelectionRange(typing[1], typing[2]); } catch { /* a select */ }
+    }
+  };
   // what each server has, and whether it's up: asked when the tab opens and after each change
   const refresh = async (fresh) => {
     if (!Object.keys(T.servers).length) { render(); return; }
@@ -1521,43 +1534,70 @@ function modelsTab(c) {
     render(); refresh(true); loadState(); renderSecretsSoon();
     return true;
   };
-  const name = el("input", { class: "input", placeholder: "gpu", spellcheck: false, "aria-label": "Name" });
-  const url = el("input", { class: "input mono", placeholder: "http://192.168.1.50:11434", spellcheck: false, "aria-label": "Address" });
-  const form = el("div", { class: "card stack", hidden: true });
-  // over SSH: cilly opens the tunnel itself, with a key of its own, optionally through a route
-  const reach = el("select", { class: "input", "aria-label": "How to reach it" },
-    el("option", { value: "direct" }, "Directly"), el("option", { value: "ssh" }, "Over SSH"));
-  const sshHost = el("input", { class: "input mono", placeholder: "gpu.example.net", spellcheck: false, "aria-label": "SSH server" });
-  const sshPort = el("input", { class: "input mono", value: "22", inputmode: "numeric", "aria-label": "SSH port" });
-  const sshUser = el("input", { class: "input mono", placeholder: "root", spellcheck: false, "aria-label": "SSH user" });
-  let sshRoute = "direct";
-  const sshRouteBox = el("div", {}, routeSelect("direct", (v) => { sshRoute = v || "direct"; }, null, "SSH route"));
-  const urlLabel = el("span", { class: "label" }, "Address");
-  const sshFields = el("div", { class: "set-grid", hidden: true });
-  const showReach = () => {
-    const over = reach.value === "ssh";
-    sshFields.hidden = !over;
-    urlLabel.textContent = over ? "Address on that server" : "Address";
-    url.placeholder = over ? "http://127.0.0.1:11434" : "http://192.168.1.50:11434";
+  const field = (label, input, cls, tip) => el("label", { class: "field" + (cls ? " " + cls : "") }, typeof label === "string" ? el("span", { class: "label" }, label, tip ? infoTip(tip) : "") : label, input);
+  // a server's fields, for adding one and for Edit: its address, and over SSH, where cilly logs in and how it gets there
+  const serverForm = (s = {}) => {
+    const F = { route: s.ssh?.route || "direct" };
+    F.url = el("input", { class: "input mono", spellcheck: false, "aria-label": "Address", value: s.url || "" });
+    F.reach = el("select", { class: "input", "aria-label": "How to reach it" },
+      el("option", { value: "direct" }, "Directly"), el("option", { value: "ssh" }, "Over SSH"));
+    F.reach.value = s.ssh ? "ssh" : "direct";
+    F.sshHost = el("input", { class: "input mono", placeholder: "gpu.example.net", spellcheck: false, "aria-label": "SSH server", value: s.ssh?.host || "" });
+    F.sshPort = el("input", { class: "input mono", value: String(s.ssh?.port || 22), inputmode: "numeric", "aria-label": "SSH port" });
+    F.sshUser = el("input", { class: "input mono", placeholder: "root", spellcheck: false, "aria-label": "SSH user", value: s.ssh?.user || "" });
+    const urlLabel = el("span", { class: "label" }, "Address");
+    F.sshFields = el("div", { class: "set-grid" }, field("SSH server", F.sshHost, "wide"), field("Port", F.sshPort), field("User", F.sshUser),
+      field("Route", el("div", {}, routeSelect(F.route, (v) => { F.route = v || "direct"; }, null, "SSH route")), "",
+        "How the SSH connection leaves this PC. Through Tor, a VPN or a proxy, the server sees that address instead of yours."));
+    F.urlField = el("div", { class: "set-grid" }, field(urlLabel, F.url, "wide", ""));
+    const showReach = () => {
+      const over = F.reach.value === "ssh";
+      F.sshFields.hidden = !over;
+      urlLabel.textContent = over ? "Address on that server" : "Address";
+      F.url.placeholder = over ? "http://127.0.0.1:11434" : "http://192.168.1.50:11434";
+    };
+    F.reach.addEventListener("change", showReach);
+    showReach();
+    F.read = () => Object.assign({ url: F.url.value.trim() }, F.reach.value === "ssh" ? {
+      ssh: { host: F.sshHost.value.trim(), port: Number(F.sshPort.value.trim() || 22), user: F.sshUser.value.trim(), route: F.route } } : {});
+    return F;
   };
-  reach.addEventListener("change", showReach);
+  const hostPort = (u) => { try { const x = new URL(u); return `${x.hostname}:${x.port || (x.protocol === "https:" ? 443 : 80)}`; } catch { return u; } };
+  // Edit: the same fields, filled in.  Its key stays, and so does the host key you confirmed, unless the SSH server or its port changes
+  const editForm = (n, s) => {
+    const F = serverForm(s);
+    const save = async () => {
+      const body = F.read(), was = s.ssh, now = body.ssh;
+      if (was && !now && !await confirmModal(`Reach ${n} directly?`, "Its SSH key is deleted and its tunnel stops. To go back to SSH, you'd put a new key on the server.", "Reach it directly", true)) return;
+      if (!await saveServer({ name: n, api_key: !!s.api_key, ...body })) return;
+      delete T.edit[n];
+      render();
+      const notes = [];
+      if (now && !was) notes.push("Put its key on the server and confirm its host key below.");
+      if (now && was && (was.host !== now.host || was.port !== now.port)) notes.push("It's another SSH server now, so get its host key and confirm it again.");
+      else if (now && was && hostPort(s.url) !== hostPort(body.url)) notes.push("Its line for authorized_keys changed. Replace the old one on the server.");
+      toast(notes.length ? `Saved ${n}. ${notes.join(" ")}` : `Saved ${n}.`);
+    };
+    const node = el("div", { class: "stack models-edit" }, el("div", { class: "sep" }),
+      el("div", { class: "set-grid" }, field("Reach it", F.reach)), F.sshFields, F.urlField,
+      el("div", { class: "row" }, el("button", { class: "btn small primary", onclick: save }, "Save"),
+        el("button", { class: "btn small ghost", onclick: () => { delete T.edit[n]; render(); } }, "Cancel")));
+    return { F, node };
+  };
+  const name = el("input", { class: "input", placeholder: "gpu", spellcheck: false, "aria-label": "Name" });
+  const A = serverForm();
+  const form = el("div", { class: "card stack", hidden: true });
   const add = async () => {
-    const n = name.value.trim(), u = url.value.trim(), over = reach.value === "ssh";
+    const n = name.value.trim(), body = A.read();
     if (!/^[a-z0-9][a-z0-9-]{0,31}$/.test(n)) { toast("Name it with lowercase letters, digits and -, like gpu or studio.", true); return; }
     if (T.servers[n]) { toast(`There is already a server called ${n}.`, true); return; }
-    const body = { name: n, url: u, api_key: false };
-    if (over) body.ssh = { host: sshHost.value.trim(), port: Number(sshPort.value.trim() || 22), user: sshUser.value.trim(), route: sshRoute };
-    if (await saveServer(body)) {
-      name.value = url.value = sshHost.value = sshUser.value = ""; form.hidden = true; opener.hidden = false;
-      toast(over ? `Added ${n}. Put its key on the server and confirm its host key below.`
+    if (await saveServer({ name: n, api_key: false, ...body })) {
+      name.value = A.url.value = A.sshHost.value = A.sshUser.value = ""; form.hidden = true; opener.hidden = false;
+      toast(body.ssh ? `Added ${n}. Put its key on the server and confirm its host key below.`
         : `Added ${n}. Pick one of its models in an agent's model menu, or under New agent → Options.`);
     }
   };
-  const field = (label, input, cls, tip) => el("label", { class: "field" + (cls ? " " + cls : "") }, typeof label === "string" ? el("span", { class: "label" }, label, tip ? infoTip(tip) : "") : label, input);
-  sshFields.append(field("SSH server", sshHost, "wide"), field("Port", sshPort), field("User", sshUser),
-    field("Route", sshRouteBox, "", "How the SSH connection leaves this PC. Through Tor, a VPN or a proxy, the server sees that address instead of yours."));
-  form.append(el("div", { class: "set-grid" }, field("Name", name), field("Reach it", reach)), sshFields,
-    el("div", { class: "set-grid" }, field(urlLabel, url, "wide", "")),
+  form.append(el("div", { class: "set-grid" }, field("Name", name), field("Reach it", A.reach)), A.sshFields, A.urlField,
     el("div", { class: "row" }, el("button", { class: "btn small primary", onclick: add }, "Add server"),
       el("button", { class: "btn small ghost", onclick: () => { form.hidden = true; opener.hidden = false; } }, "Cancel")));
   const opener = el("button", { class: "chip add models-add", type: "button", onclick: () => { form.hidden = false; opener.hidden = true; name.focus(); } }, "+ Add a server");

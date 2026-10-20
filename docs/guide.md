@@ -446,6 +446,8 @@ Agents can use a model you run yourself instead of Claude's. cilly doesn't insta
 3. Press **Test**. cilly lists the server's models and sends one of them a short message, the way Claude Code does.
 4. In an agent's model menu, pick one of the server's models under **Local**, where each model has its server's name next to it. Claude's models are under **Cloud**. A server that doesn't answer is left out of the menu, so it doesn't get in the way. It's used from the next message on, and you can switch back to a Claude model at any time. **New agent** and a project's **Defaults for new agents** list the same models, so a project can start its agents on one of yours.
 
+**Edit** on a server changes its address, and how cilly reaches it. Its name stays, so agents keep the model of its they're on. **Remove** takes it out.
+
 How it works:
 
 - **Through the agent's egress proxy only.** The agent's Claude Code talks to `https://<name>.model.cilly.internal`. Only that agent's egress proxy knows the name. It answers with the certificate of this start's CA, as it does for keeping tokens on this PC, and passes each request on to the address you gave.
@@ -463,6 +465,10 @@ A model server on another machine, such as a GPU you rent, usually isn't open to
 2. cilly makes a key pair just for this server. Add the line it shows to `~/.ssh/authorized_keys` for that user on the server. The line starts with `restrict,port-forwarding,permitopen="..."`, so the key can forward to the model server's port and do nothing else: no shell, no commands, no other ports.
 3. Press **Get host key**. cilly asks the server for its host key, through the same route, without logging in, and shows its fingerprint. Check it on the server with `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`, or in your provider's console, and press **It matches**. Until you do, the tunnel doesn't start, and after that cilly refuses any other host key.
 4. Press **Test**. The tunnel starts when something first needs the server, and stays up while the panel runs.
+
+**Edit** changes the SSH server, its port, the user, the route and the address on that server. The key stays, so nothing changes on the server unless the address does: then its line for `authorized_keys` names the new port, and you replace the old one there. The host key you confirmed stays too, unless the SSH server or its port changes, since that's another machine. Then **Get host key** and **It matches** again.
+
+When a forward fails, the tunnel says why: nothing listening on that address on the server, or a forward the server doesn't allow, which is usually a line in `authorized_keys` from before the address changed. A banner the server sends when you log in isn't shown, since it's the server's text rather than cilly's.
 
 How it works:
 
