@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools==80.9.0"]  # only to build the package; cilly itself needs nothing beyond Python
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cilly"
+version = "0.1.0"
+description = "Local control panel for running coding agents in disposable rootless QEMU/KVM VMs"
+requires-python = ">=3.11"
+license = { text = "GPL-3.0-or-later" }
+dependencies = []   # standard library only, on purpose
+
+[project.scripts]
+cilly = "cilly.__main__:main"
+
+[tool.setuptools]
+packages = ["cilly"]
+
+[tool.setuptools.package-data]
+# the web UI, what goes into the VM images, and the one-time root setup
+cilly = ["static/*", "static/fonts/*", "static/theme/*", "static/theme/icons/*", "static/theme/icons/32/*", "static/theme/phosphor/*", "static/theme/cursors/*", "guest/*", "guest/rea/*", "install.sh"]

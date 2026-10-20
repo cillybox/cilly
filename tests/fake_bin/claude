@@ -1,0 +1,154 @@
+#!/usr/bin/env python3
+"""Fake Claude Code for runner tests, speaking the stream-json input protocol as its embedded
+docs describe it (no live run was possible): a user message per stdin line, command_lifecycle
+frames, the send-now interrupt, and stdin open for the whole session.
+
+Knobs (environment): FAKE_CLAUDE_DIR gets stdin.jsonl (every line read) and bg.pid (a background
+command started by the first turn, which must outlive a delivered message).  FAKE_CLAUDE_HELP=old:
+no --input-format.  FAKE_CLAUDE_CAPS: system/init capabilities, comma separated.
+FAKE_CLAUDE_TURN: seconds the first turn works.  FAKE_CLAUDE_SILENT=1: no lifecycle frames.
+FAKE_CLAUDE_HANG=1: the first turn never ends.  FAKE_CLAUDE_WAITING: queued turns the first result
+reports though none come (so only the session going idle says it's over).  FAKE_CLAUDE_REFUSE=1: every
+message after the prompt is refused.  The session says when it goes idle only with
+CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS set, as Claude Code does, and then also once before its first turn."""
+import json
+import os
+import select
+import subprocess
+import sys
+import time
+
+DIR = os.environ.get("FAKE_CLAUDE_DIR", ".")
+args = sys.argv[1:]
+if "--help" in args:
+    print("Usage: claude [options] [command] [prompt]\n  -p, --print  Print response and exit")
+    if os.environ.get("FAKE_CLAUDE_HELP") != "old":
+        print('  --input-format <format>  Input format (only works with --print): "text" (default), or "stream-json"')
+    sys.exit(0)
+
+
+def out(**msg):
+    sys.stdout.write(json.dumps(msg) + "\n")
+    sys.stdout.flush()
+
+
+def say(text):
+    out(type="assistant", message={"content": [{"type": "text", "text": text}]}, session_id=SID)
+
+
+def result(waiting=0):
+    out(type="result", subtype="success", is_error=False, num_turns=1, result="ok", queued_turn_count=waiting, session_id=SID)
+
+
+SID = "11111111-2222-4333-8444-555555555555"
+if "--input-format" not in args:
+    say("on it: " + sys.stdin.read())
+    result()
+    sys.exit(0)
+
+silent = os.environ.get("FAKE_CLAUDE_SILENT") == "1"
+states = bool(os.environ.get("CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS"))
+refuse = os.environ.get("FAKE_CLAUDE_REFUSE") == "1"
+buf = b""
+
+
+def lines(timeout):
+    """Stdin lines that arrive within timeout; None at the end of input."""
+    global buf
+    end = time.time() + timeout
+    got = []
+    while not got:
+        left = end - time.time()
+        if left <= 0:
+            return got
+        r, _, _ = select.select([0], [], [], left)
+        if not r:
+            return got
+        chunk = os.read(0, 65536)
+        if not chunk:
+            return None
+        buf += chunk
+        while b"\n" in buf:
+            line, buf = buf.split(b"\n", 1)
+            with open(os.path.join(DIR, "stdin.jsonl"), "ab") as f:
+                f.write(line + b"\n")
+            got.append(json.loads(line))
+    return got
+
+
+def lifecycle(uid, state):
+    if uid and not silent:
+        out(type="command_lifecycle", command_uuid=uid, state=state, session_id=SID)
+
+
+def idle():
+    if states:
+        out(type="system", subtype="session_state_changed", state="idle", session_id=SID)
+
+
+def text_of(m):
+    c = m["message"]["content"]
+    return c if isinstance(c, str) else " ".join(b.get("text", "") for b in c)
+
+
+def answer(msgs):
+    """One turn for messages that waited (joined, as Claude Code may do)."""
+    for m in msgs:
+        lifecycle(m.get("uuid"), "started")
+    say("got: " + " | ".join(text_of(m) for m in msgs))
+    result()
+    for m in msgs:
+        lifecycle(m.get("uuid"), "completed")
+
+
+first = lines(30)
+if not first:
+    sys.exit(1)
+caps = [c for c in os.environ.get("FAKE_CLAUDE_CAPS", "interrupt_send_now_v1,msg_lifecycle_v1").split(",") if c]
+out(type="system", subtype="init", capabilities=caps, session_id=SID)
+idle()
+bg = subprocess.Popen(["sleep", "120"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+with open(os.path.join(DIR, "bg.pid"), "w") as f:
+    f.write(str(bg.pid))
+out(type="system", subtype="task_started", task_id="bg1", tool_use_id="toolu_bg1", description="sleep 120", session_id=SID)
+say("on it: " + text_of(first[0]))
+
+waiting, end = [], time.time() + float(os.environ.get("FAKE_CLAUDE_TURN", "3"))
+hang = os.environ.get("FAKE_CLAUDE_HANG") == "1"
+while hang or time.time() < end:
+    got = lines(max(0.05, end - time.time()) if not hang else 1)
+    if got is None:
+        break
+    now = False
+    for m in got:
+        if m.get("type") == "user" and refuse:
+            lifecycle(m.get("uuid"), "refused")
+        elif m.get("type") == "user":
+            lifecycle(m.get("uuid"), "queued")
+            waiting.append(m)
+        elif m.get("type") == "control_request":
+            req = m["request"]
+            hit = req.get("subtype") == "interrupt" and req.get("send_now") is True and \
+                any(w.get("uuid") == req.get("message_uuid") for w in waiting)
+            out(type="control_response", response={"subtype": "success", "request_id": m["request_id"],
+                                                   "response": {"send_now": "delivering" if hit else "nothing_waiting"}})
+            now = now or hit
+    if now:  # the turn takes the message in: background work goes on
+        break
+result(len(waiting) or int(os.environ.get("FAKE_CLAUDE_WAITING", "0")))
+if waiting:
+    answer(waiting)
+idle()
+while True:
+    got = lines(3600)
+    if got is None:
+        break
+    for m in got:
+        if m.get("type") == "user" and refuse:
+            lifecycle(m.get("uuid"), "refused")
+        elif m.get("type") == "user":
+            lifecycle(m.get("uuid"), "queued")
+            answer([m])
+            idle()
+with open(os.path.join(DIR, "eof"), "w") as f:
+    f.write(str(time.time()))

@@ -1,0 +1,39 @@
+# Example build workflow for a repository agents work on.
+# Copy to .github/workflows/build.yml in the target repo and adapt the build.
+#
+# Agent branches live in the same repo, so this workflow runs agent-written
+# code. Keep it harmless to run:
+#   * read-only GITHUB_TOKEN, no secrets, no deployment environments
+#   * the bot's token has no `Workflows` permission, so agents cannot edit
+#     this file (they can still edit code it runs, e.g. Makefile/build scripts)
+name: build
+
+on:
+  push:
+    # agent branches: kind/name (the default), or under your prefix (Settings → GitHub access)
+    branches: ["feat/**", "fix/**", "docs/**", "refactor/**", "test/**", "chore/**", "cilly/**", "main"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      # --- replace with your build -------------------------------------
+      - name: Build
+        run: |
+          mkdir -p dist
+          echo "replace me with your build" > dist/README.txt
+      # ------------------------------------------------------------------
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build            # set "artifacts.name" in cilly's config to match
+          path: dist/
+          retention-days: 7
+          if-no-files-found: error

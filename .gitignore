@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.qcow2
+*.iso
+/build/
+/dist/
+*.egg-info/

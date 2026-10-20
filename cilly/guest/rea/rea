@@ -1,0 +1,24 @@
+#!/bin/sh
+# rea: REA's CLI, and its MCP server with `rea mcp`, on its own Node.js (not the one on PATH).
+# Updating REA from inside the VM makes no sense: it comes with the image, /opt/rea is root-owned so the
+# agent can't change it, and NO_UPDATE_NOTIFIER is set.  This wrapper is a guard against an accidental
+# update or re-registration, not a security boundary. The real barrier is the read-only, root-owned tree.
+refuse() {
+	echo "rea: '$1' is turned off here. REA comes with the VM image, and its MCP server is set up in the cilly panel." >&2
+	exit 2
+}
+# The subcommand is the first argument that isn't a flag, so `rea --json update` is caught too.
+a1='' a2=''
+for a in "$@"; do
+	case "$a" in
+	--update | --incur-update-check) refuse "$a" ;;  # incur self-updates on --update anywhere
+	-*) ;;  # any other flag, such as --json: skip it
+	*) if [ -z "$a1" ]; then a1=$a; elif [ -z "$a2" ]; then a2=$a; fi ;;
+	esac
+done
+case "$a1" in
+update | setup) refuse "rea $a1" ;;
+esac
+[ "$a1" = mcp ] && [ "$a2" = add ] && refuse "rea mcp add"
+export NO_UPDATE_NOTIFIER=1
+exec /opt/rea/node/bin/node /opt/rea/app/node_modules/rea-agents/scripts/rea.mjs "$@"

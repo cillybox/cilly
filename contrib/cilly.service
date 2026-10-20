@@ -1,0 +1,19 @@
+# systemd *user* service that starts the panel when you log in, as you (never root).
+#   cp contrib/cilly.service ~/.config/systemd/user/
+#   (edit WorkingDirectory below if your checkout isn't ~/cilly)
+#   systemctl --user daemon-reload && systemctl --user enable --now cilly
+#   cd ~/cilly && python3 -m cilly open  # opens the panel (its link is never in the journal)
+[Unit]
+Description=cilly: Claude Code agents in their own VMs
+
+[Service]
+WorkingDirectory=%h/cilly
+ExecStart=/usr/bin/python3 -m cilly serve
+# stopping shuts the VMs down properly (memory agents export their memory first), and cilly waits
+# up to 180 s for them, like Stop, plus 15 s to record each agent's final state
+TimeoutStopSec=210
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

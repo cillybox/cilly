@@ -1,0 +1,45 @@
+#!/bin/sh
+# ghidra-decompile <binary> <outdir>: Ghidra analyzes the binary headless and writes decompiled C for
+# every function to <outdir>/<program name>.c (one file per program; a fat binary imports as several).
+# Its project stays in ~/ghidra-projects for a closer look.  A big binary can take a long time: run it
+# in the background and watch <outdir>. Several calls run one after another, never at once.
+set -eu
+if [ $# -ne 2 ]; then
+	echo "usage: ghidra-decompile <binary> <outdir>" >&2
+	exit 2
+fi
+bin=$(readlink -f -- "$1")
+if [ ! -f "$bin" ]; then
+	echo "ghidra-decompile: $1 isn't a file" >&2
+	exit 1
+fi
+mkdir -p -- "$2"
+out=$(cd -- "$2" && pwd)
+project=$(basename -- "$bin" | tr -c 'A-Za-z0-9._\n-' '_')
+mkdir -p "$HOME/ghidra-projects"
+# One at a time: each Ghidra takes most of the VM's memory, so two at once run it out. The kernel then
+# kills one, and on the way there everything else in the VM crawls.
+exec 9>"$HOME/ghidra-projects/.ghidra-decompile.lock"
+if ! flock -n 9; then
+	echo "ghidra-decompile: another one is running, so this one waits for it (they run one at a time)" >&2
+	flock 9
+fi
+# Give Ghidra most of the VM's memory unless it's already set (one runs at a time); the agent's notes suggest 6 to 8 GB.
+if [ -z "${GHIDRA_MAXMEM:-}" ] && [ -z "${GHIDRA_HEADLESS_MAXMEM:-}" ]; then
+	kb=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)
+	if [ "$kb" -gt 1048576 ] 2>/dev/null; then
+		export GHIDRA_HEADLESS_MAXMEM="$((kb * 70 / 100 / 1024))M"
+	fi
+fi
+timeout=${GHIDRA_ANALYSIS_TIMEOUT:-1200}   # seconds per program, so one bad binary can't run forever
+started=$(mktemp "$out/.ghidra-decompile.XXXXXX")
+trap 'rm -f "$started"' EXIT
+touch -d '1 second ago' "$started"  # file times are coarse: a .c written right after must still be newer
+/opt/ghidra/support/analyzeHeadless "$HOME/ghidra-projects" "$project" -import "$bin" -overwrite \
+	-analysisTimeoutPerFile "$timeout" -scriptPath /opt/ghidra-scripts -postScript ExportDecompiled.java "$out"
+# The script writes one .c per program it decompiled. If this run wrote none, the analysis produced
+# nothing, whatever an earlier run left in the folder.
+if [ -z "$(find "$out" -maxdepth 1 -name '*.c' -newer "$started")" ]; then
+	echo "ghidra-decompile: no decompiled output was produced" >&2
+	exit 1
+fi

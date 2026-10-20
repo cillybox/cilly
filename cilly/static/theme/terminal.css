@@ -1,0 +1,219 @@
+/* The Terminal style: the landing page's "surveillance terminal" look. A theme turns it on with
+   style "terminal" (themes.py), which sets data-style="terminal" on <html>. Every rule is inside
+   that selector, so Classic never changes. The colors and fonts come from the theme's tokens;
+   this file only changes shapes, icons and cursors. Icons are white pixel art, tinted with the
+   text color through a mask, and only ever drawn at 16 px (from the 32 px file on screens with twice the pixels). */
+
+@keyframes cilly-spin8 { to { -webkit-mask-position: -128px 0; mask-position: -128px 0; } }
+/* Waiting: the sand runs down, holds, and the glass turns over (9 frames, 2.12 s, the first and the full glass held longer) */
+@keyframes cilly-wait9 { 0% { -webkit-mask-position: 0px 0; mask-position: 0px 0; } 23.58% { -webkit-mask-position: -16px 0; mask-position: -16px 0; } 31.13% { -webkit-mask-position: -32px 0; mask-position: -32px 0; } 38.68% { -webkit-mask-position: -48px 0; mask-position: -48px 0; } 46.23% { -webkit-mask-position: -64px 0; mask-position: -64px 0; } 53.77% { -webkit-mask-position: -80px 0; mask-position: -80px 0; } 61.32% { -webkit-mask-position: -96px 0; mask-position: -96px 0; } 68.87% { -webkit-mask-position: -112px 0; mask-position: -112px 0; } 92.45% { -webkit-mask-position: -128px 0; mask-position: -128px 0; } }
+
+:root[data-style="terminal"] {
+  --text-step: 1px;  /* pixel fonts only at whole sizes */
+  --pixel-corners: polygon(0 3px, 3px 3px, 3px 0, calc(100% - 3px) 0, calc(100% - 3px) 3px, 100% 3px, 100% calc(100% - 3px),
+    calc(100% - 3px) calc(100% - 3px), calc(100% - 3px) 100%, 3px 100%, 3px calc(100% - 3px), 0 calc(100% - 3px));
+
+  & body { -webkit-font-smoothing: none; font-synthesis: none; font-variant-ligatures: none; line-height: 1.3; }  /* Pixelify's fi looks like an A */
+  & .sidebar { width: 300px; }
+  & .page-title, & .review-title, & .setup-title, & .m-h1, & .agent-head .name, & .m-set-page > .set-panel > .set-sub:first-child .title.big { font-weight: 400; letter-spacing: 0; text-shadow: 2px 2px 0 #000; }
+  & .msg-claude { line-height: 1.4; }
+  & .md-h { font-family: var(--font-heading); font-weight: 400; }
+
+  /* shape: everything square */
+  & *, & *::before, & *::after { border-radius: 0 !important; }
+
+  /* buttons: paper for the main action, graphite for the rest, with cut corners */
+  & .btn { background: var(--surface-3); clip-path: var(--pixel-corners); }
+  & .btn:hover { background: var(--grabber); }
+  & .btn.primary, & .btn.accent, & .round.send, & .send-pill, & .sb-new { background: var(--paper); color: var(--ink); clip-path: var(--pixel-corners); }
+  & .btn.primary:hover, & .btn.accent:hover, & .round.send:hover, & .send-pill:hover, & .sb-new:hover { background: var(--fg-max); }
+  & .btn.danger { background: var(--danger-btn); color: var(--fg-max); }
+  & .btn.ghost { background: transparent; clip-path: none; }
+  & .btn:disabled, & .round.send:disabled, & .send-pill:disabled { background: var(--surface-2); color: var(--fg-6); }
+  & .sb-new { border: 0; }
+  & .toast-title { font-weight: 400; }
+  & .toast { border-color: var(--ok); }
+  & .toast.err { border-color: var(--err); }
+
+  /* cards: a double rule with a stud on each corner */
+  & .card, & .composer, & .boot-card, & .modal, & .pop, & .req-card {
+    border: 1px solid var(--line-strong); box-shadow: inset 0 0 0 4px var(--surface), inset 0 0 0 5px var(--line);
+  }
+  /* the studs hang off the box; popovers and sheets keep their own position (absolute or fixed) */
+  & .card, & .composer, & .boot-card, & .modal, & .req-card { position: relative; }
+  & .card, & .composer, & .modal, & .pop, & .req-card { background: var(--surface); }
+  & .card.flush { box-shadow: none; }
+  & .pop, & .modal { box-shadow: inset 0 0 0 4px var(--surface), inset 0 0 0 5px var(--line), 0 18px 50px rgba(0, 0, 0, .6); }
+  & .card::before, & .composer::before, & .modal::before, & .boot-card::before {
+    content: ""; position: absolute; inset: -3px; pointer-events: none;
+    background: linear-gradient(var(--bevel-hi), var(--bevel-hi)) left top / 5px 5px no-repeat,
+      linear-gradient(var(--bevel-hi), var(--bevel-hi)) right top / 5px 5px no-repeat,
+      linear-gradient(var(--bevel-hi), var(--bevel-hi)) left bottom / 5px 5px no-repeat,
+      linear-gradient(var(--bevel-hi), var(--bevel-hi)) right bottom / 5px 5px no-repeat;
+  }
+  & .boot-card { overflow: visible; }
+
+  /* raised: your message, inbox items */
+  & .msg-you .bubble, & .inbox-item {
+    background: var(--surface-2); border-top: 1px solid var(--bevel-hi); border-left: 1px solid var(--bevel-hi);
+    border-bottom: 1px solid var(--bevel-lo); border-right: 1px solid var(--bevel-lo);
+  }
+  & .inbox-item { padding: 12px; margin-bottom: 6px; }
+
+  /* chips, tabs, the selected row */
+  & .chip, & .pill, & .tag, & .ctx-pill, & .sandbox-badge, & .tool-line .verb { border: 1px solid var(--line-strong); }
+  & .chip.on { border-color: var(--accent-line); }
+  & .tab.on { box-shadow: inset 0 -2px 0 var(--accent-fg); }
+  & .sb-row.active, & .sb-link.active { background: var(--surface); box-shadow: inset 2px 0 0 var(--accent-fg); }
+  & .input:focus, & .editor:focus, & input:focus-visible, & textarea:focus-visible { outline: 1px solid var(--accent-fg); outline-offset: -1px; }
+  & .switch.on { background: var(--accent-fg); }
+  & .seg { background: transparent; border: 1px solid var(--line-strong); }
+
+  /* dropdowns drawn by the page (see style.css): a double-rule list, a pixel chevron and tick */
+  & select::picker-icon { content: ""; width: 16px; height: 16px; background: currentColor;
+    -webkit-mask: image-set(url("icons/action-chevron-down.png") 1x, url("icons/32/action-chevron-down.png") 2x) center / 16px 16px no-repeat; mask: image-set(url("icons/action-chevron-down.png") 1x, url("icons/32/action-chevron-down.png") 2x) center / 16px 16px no-repeat; }
+  & select:open::picker-icon { -webkit-mask-image: image-set(url("icons/action-chevron-up.png") 1x, url("icons/32/action-chevron-up.png") 2x); mask-image: image-set(url("icons/action-chevron-up.png") 1x, url("icons/32/action-chevron-up.png") 2x); }
+  & ::picker(select) { padding: 7px; box-shadow: inset 0 0 0 4px var(--surface), inset 0 0 0 5px var(--line), 0 18px 50px rgba(0, 0, 0, .6); }
+  & option::checkmark { content: ""; width: 16px; height: 16px; background: currentColor;
+    -webkit-mask: image-set(url("icons/action-check.png") 1x, url("icons/32/action-check.png") 2x) center / 16px 16px no-repeat; mask: image-set(url("icons/action-check.png") 1x, url("icons/32/action-check.png") 2x) center / 16px 16px no-repeat; }
+  & option:checked { background: var(--accent-tint); color: var(--accent-chip-fg); }
+
+  /* the (i) of a longer explanation: a pixel icon, filled while open */
+  & .info-i { font-size: 0; width: 16px; height: 16px; border: 0; border-radius: 0; background: currentColor;
+    -webkit-mask: image-set(url("icons/action-info.png") 1x, url("icons/32/action-info.png") 2x) center / 16px 16px no-repeat; mask: image-set(url("icons/action-info.png") 1x, url("icons/32/action-info.png") 2x) center / 16px 16px no-repeat; }
+  & .info-btn:hover .info-i, & .info-tip:focus-within .info-i { -webkit-mask-image: image-set(url("icons/action-info-filled.png") 1x, url("icons/32/action-info-filled.png") 2x); mask-image: image-set(url("icons/action-info-filled.png") 1x, url("icons/32/action-info-filled.png") 2x); }
+
+  /* faint 5 px scanlines behind the pages */
+  & .main { background: var(--bg) repeating-linear-gradient(0deg, color-mix(in srgb, var(--fg) 3%, transparent) 0 1px, transparent 1px 5px); }
+
+  /* ---- icons ---- */
+  /* a glyph or drawn shape replaced by a pixel icon */
+  & #sb-new .plus, & .round.send, & .icon-btn[aria-label="More actions"], & .icon-btn[aria-label="Back to agents"], & .icon-btn.m-back,
+  & .icon-btn[aria-label="Close"], & .round[aria-label="Attach files"], & .round[aria-label="Refresh"], & .composer .x,
+  & .sb-add, & .sb-more, & .fold-mark, & .lb-nav { font-size: 0; }
+  & #sb-new .plus::before, & .round.send::before, & .icon-btn[aria-label="More actions"]::before, & .icon-btn.m-back::before,
+  & .icon-btn[aria-label="Close"]::before, & .round[aria-label="Attach files"]::before, & .round[aria-label="Refresh"]::before,
+  & .composer .x::before, & .sb-add::before, & .sb-more::before, & .fold-mark::before, & .lb-nav::before, & .hint::before, & #sb-inbox::before, & #sb-prs::before, & #sb-policy::before, & #sb-settings::before,
+  & .tool-line .verb[data-verb]::before, & .head-ss::before, & .sandbox-badge::before, & .ctx-pill::before, & .chev::before, & .m-find::before {
+    content: ""; display: inline-block; flex: none; width: 16px; height: 16px; vertical-align: -3px; background: currentColor;
+    -webkit-mask: var(--i) center / 16px 16px no-repeat; mask: var(--i) center / 16px 16px no-repeat;
+  }
+  /* an icon in front of a label */
+  & #sb-inbox::before, & #sb-prs::before, & #sb-policy::before, & #sb-settings::before, & .head-ss::before,
+  & .tool-line .verb[data-verb]::before { margin-right: 8px; }
+  & .sandbox-badge .dot { display: none; }
+  & .sandbox-badge { color: var(--ok); } & .sandbox-badge.bad { color: var(--err); }
+  & .sandbox-badge > :not(.count-badge) { color: var(--fg-2); }
+  & .chev { font-size: 0; }
+  & #sb-new .plus::before { --i: image-set(url("icons/nav-new-agent.png") 1x, url("icons/32/nav-new-agent.png") 2x); }
+  & #sb-inbox::before { --i: image-set(url("icons/nav-inbox.png") 1x, url("icons/32/nav-inbox.png") 2x); }
+  & #sb-prs::before { --i: image-set(url("icons/nav-pull-requests.png") 1x, url("icons/32/nav-pull-requests.png") 2x); }
+  & #sb-policy::before { --i: image-set(url("icons/nav-policy.png") 1x, url("icons/32/nav-policy.png") 2x); }
+  & #sb-settings::before { --i: image-set(url("icons/nav-settings.png") 1x, url("icons/32/nav-settings.png") 2x); }
+  & .round.send::before { --i: image-set(url("icons/input-send.png") 1x, url("icons/32/input-send.png") 2x); }
+  & .round[aria-label="Attach files"]::before { --i: image-set(url("icons/input-attach.png") 1x, url("icons/32/input-attach.png") 2x); }
+  & .round[aria-label="Refresh"]::before { --i: image-set(url("icons/action-refresh.png") 1x, url("icons/32/action-refresh.png") 2x); }
+  & .icon-btn[aria-label="More actions"]::before { --i: image-set(url("icons/header-more.png") 1x, url("icons/32/header-more.png") 2x); }
+  & .icon-btn.m-back::before { --i: image-set(url("icons/action-back.png") 1x, url("icons/32/action-back.png") 2x); }
+  & .icon-btn[aria-label="Close"]::before, & .composer .x::before { --i: image-set(url("icons/action-close.png") 1x, url("icons/32/action-close.png") 2x); }
+  & .head-ss.start::before { --i: image-set(url("icons/header-start.png") 1x, url("icons/32/header-start.png") 2x); }
+  & .head-ss.stop::before { --i: image-set(url("icons/header-stop.png") 1x, url("icons/32/header-stop.png") 2x); }
+  & .sandbox-badge::before { --i: image-set(url("icons/header-sandbox.png") 1x, url("icons/32/header-sandbox.png") 2x); }
+  & .ctx-pill::before { --i: image-set(url("icons/header-context.png") 1x, url("icons/32/header-context.png") 2x); }
+  & .m-find svg { display: none; }  /* the phone's Go to button: the pixel magnifier the tool lines use */
+  & .m-find::before { --i: image-set(url("icons/tool-search.png") 1x, url("icons/32/tool-search.png") 2x); }
+  & .chev::before, & .fold-mark::before { --i: image-set(url("icons/action-chevron.png") 1x, url("icons/32/action-chevron.png") 2x); }
+  & .lb-nav[aria-label="Previous image"]::before { --i: image-set(url("icons/action-chevron-left.png") 1x, url("icons/32/action-chevron-left.png") 2x); }
+  & .lb-nav[aria-label="Next image"]::before { --i: image-set(url("icons/action-chevron.png") 1x, url("icons/32/action-chevron.png") 2x); }
+  & .hint::before { --i: image-set(url("icons/action-info.png") 1x, url("icons/32/action-info.png") 2x); margin-right: 8px; }
+  & .fold-mark.open::before { --i: image-set(url("icons/action-chevron-down.png") 1x, url("icons/32/action-chevron-down.png") 2x); }
+  & .sb-add::before { --i: image-set(url("icons/nav-new-agent.png") 1x, url("icons/32/nav-new-agent.png") 2x); }
+  & .sb-more::before { --i: image-set(url("icons/header-more.png") 1x, url("icons/32/header-more.png") 2x); transform: rotate(90deg); }
+  & .tool-line .verb[data-verb="Read"]::before { --i: image-set(url("icons/tool-read.png") 1x, url("icons/32/tool-read.png") 2x); }
+  & .tool-line .verb[data-verb="Ran"]::before { --i: image-set(url("icons/tool-bash.png") 1x, url("icons/32/tool-bash.png") 2x); }
+  & .tool-line .verb:is([data-verb="Edited"], [data-verb="Planned"])::before { --i: image-set(url("icons/tool-edit.png") 1x, url("icons/32/tool-edit.png") 2x); }
+  & .tool-line .verb:is([data-verb="Wrote"], [data-verb="Attached"], [data-verb="Delegated"])::before { --i: image-set(url("icons/tool-write.png") 1x, url("icons/32/tool-write.png") 2x); }
+  & .tool-line .verb:is([data-verb="Searched"], [data-verb="Listed"])::before { --i: image-set(url("icons/tool-search.png") 1x, url("icons/32/tool-search.png") 2x); }
+  & .tool-line .verb[data-verb="Fetched"]::before { --i: image-set(url("icons/tool-web.png") 1x, url("icons/32/tool-web.png") 2x); }
+  & .tool-line .verb:not([data-verb])::before, & .tool-line .verb[data-verb=""]::before { display: none; }
+  & .tool-line .verb { display: inline-flex; align-items: center; }
+
+  /* drawn icons (SVG, or the panel shape) become the pixel ones */
+  & .panel-icon, & .st-icon, & .m-ico > svg, & .round.mic > svg, & .round.send.stop > svg {
+    display: inline-block; width: 16px; height: 16px; border: 0; background: currentColor;
+    -webkit-mask: var(--i) center / 16px 16px no-repeat; mask: var(--i) center / 16px 16px no-repeat;
+  }
+  & .panel-icon::before, & .st-icon > *, & .m-ico > svg > *, & .round.mic > svg > *, & .round.send.stop > svg > * { display: none; }
+  & .panel-icon { --i: image-set(url("icons/nav-agents.png") 1x, url("icons/32/nav-agents.png") 2x); }
+  & .round.mic > svg { --i: image-set(url("icons/input-mic.png") 1x, url("icons/32/input-mic.png") 2x); }
+  & .round.send.stop { font-size: 0; }
+  & .round.send.stop::before { display: none; }
+  & .round.send.stop > svg { --i: image-set(url("icons/header-stop.png") 1x, url("icons/32/header-stop.png") 2x); }
+  & #m-nav-agents .m-ico > svg { --i: image-set(url("icons/nav-agents.png") 1x, url("icons/32/nav-agents.png") 2x); }
+  & #m-nav-inbox .m-ico > svg { --i: image-set(url("icons/nav-inbox.png") 1x, url("icons/32/nav-inbox.png") 2x); }
+  & #m-nav-prs .m-ico > svg { --i: image-set(url("icons/nav-pull-requests.png") 1x, url("icons/32/nav-pull-requests.png") 2x); }
+  & #m-nav-more .m-ico > svg { --i: image-set(url("icons/header-more.png") 1x, url("icons/32/header-more.png") 2x); }
+
+  /* states: the shape says it as well as the color */
+  & .st-icon.st-waiting {
+    -webkit-mask: image-set(url("icons/state-waiting-strip.png") 1x, url("icons/32/state-waiting-strip.png") 2x) 0 0 / 144px 16px no-repeat; mask: image-set(url("icons/state-waiting-strip.png") 1x, url("icons/32/state-waiting-strip.png") 2x) 0 0 / 144px 16px no-repeat;
+    animation: cilly-wait9 2.12s step-end infinite;
+  }
+  & .st-icon.st-idle { --i: image-set(url("icons/state-idle.png") 1x, url("icons/32/state-idle.png") 2x); }
+  & .st-icon.st-starting, & .st-icon.st-stopping { --i: image-set(url("icons/state-starting.png") 1x, url("icons/32/state-starting.png") 2x); }
+  & .st-icon.st-stopped { --i: image-set(url("icons/state-stopped.png") 1x, url("icons/32/state-stopped.png") 2x); }
+  & .st-icon.st-failed { --i: image-set(url("icons/state-failed.png") 1x, url("icons/32/state-failed.png") 2x); }
+  & .st-icon.st-running {
+    -webkit-mask: image-set(url("icons/state-running-strip.png") 1x, url("icons/32/state-running-strip.png") 2x) 0 0 / 128px 16px no-repeat; mask: image-set(url("icons/state-running-strip.png") 1x, url("icons/32/state-running-strip.png") 2x) 0 0 / 128px 16px no-repeat;
+    animation: cilly-spin8 .9s steps(8) infinite;
+  }
+  /* status squares: a tick when fine, the warning triangle when something needs a look, the × square when it failed */
+  & .dot {
+    width: 16px; height: 16px; color: var(--fg-5); background: currentColor;
+    -webkit-mask: var(--i, image-set(url("icons/state-idle.png") 1x, url("icons/32/state-idle.png") 2x)) center / 16px 16px no-repeat; mask: var(--i, image-set(url("icons/state-idle.png") 1x, url("icons/32/state-idle.png") 2x)) center / 16px 16px no-repeat;
+  }
+  & .dot.s-ready, & .dot.s-done, & .dot.s-delivered { color: var(--ok); --i: image-set(url("icons/status-check.png") 1x, url("icons/32/status-check.png") 2x); }
+  /* plain status dots (a secret, the host): a check, or the filled triangle when something's missing */
+  & .dot.ok { color: var(--ok); --i: image-set(url("icons/status-check.png") 1x, url("icons/32/status-check.png") 2x); }
+  & .dot.warn { color: var(--warn); --i: image-set(url("icons/status-warning.png") 1x, url("icons/32/status-warning.png") 2x); }
+  & .dot.err { color: var(--err); --i: var(--warn-i); }
+  & .tab-dot { width: 16px; height: 16px; border-radius: 0; color: var(--err); background: currentColor;
+    -webkit-mask: var(--warn-i) center / 16px 16px no-repeat; mask: var(--warn-i) center / 16px 16px no-repeat; }
+  & .tab-dot.warn { color: var(--warn); }
+  & .dot.s-busy { color: var(--warn); --i: image-set(url("icons/action-warning-filled.png") 1x, url("icons/32/action-warning-filled.png") 2x); }
+
+  /* warnings anywhere: the filled triangle in front */
+  & .note-box.warn::before, & .vm-note.warn::before, & .desc.warn::before, & .ask.net::before, & .blocked-row::before {
+    content: ""; display: inline-block; flex: none; width: 16px; height: 16px; vertical-align: -3px; margin-right: 6px; background: currentColor;
+    -webkit-mask: var(--warn-i) center / 16px 16px no-repeat; mask: var(--warn-i) center / 16px 16px no-repeat;
+  }
+  & { --warn-i: image-set(url("icons/action-warning-filled.png") 1x, url("icons/32/action-warning-filled.png") 2x); }
+  & .note-box.warn::before { margin-top: 2px; }
+  & .ask.net::before, & .blocked-row::before { color: var(--err); margin-right: 0; }
+  & .dot.s-pending { color: var(--warn); --i: image-set(url("icons/state-waiting.png") 1x, url("icons/32/state-waiting.png") 2x); }
+  & .dot.s-failed { color: var(--err); --i: image-set(url("icons/state-failed.png") 1x, url("icons/32/state-failed.png") 2x); }
+  & .dot.s-stopped, & .dot.s-dismissed, & .dot.s-interrupted { color: var(--fg-5); --i: image-set(url("icons/state-stopped.png") 1x, url("icons/32/state-stopped.png") 2x); }
+  & .dot.s-booting, & .dot.s-stopping { color: var(--run); --i: image-set(url("icons/state-starting.png") 1x, url("icons/32/state-starting.png") 2x); }
+  & .sb-host .dot { margin-top: 2px; }
+
+  /* cursors: 16 px, with a 32 px file for sharp screens */
+  & body { cursor: image-set(url("cursors/default-16.png") 1x, url("cursors/default-32.png") 2x) 1 1, default; }
+  & :is(a, button, summary, select, label, [role="button"], .clickable) {
+    cursor: image-set(url("cursors/pointer-16.png") 1x, url("cursors/pointer-32.png") 2x) 5 0, pointer;
+  }
+  & :is(a, button, .clickable):active { cursor: image-set(url("cursors/grabbing-16.png") 1x, url("cursors/grabbing-32.png") 2x) 4 4, pointer; }
+  & :is(input:not([type="checkbox"], [type="radio"], [type="color"], [type="file"]), textarea, [contenteditable]) {
+    cursor: image-set(url("cursors/text-16.png") 1x, url("cursors/text-32.png") 2x) 7 8, text;
+  }
+  & :disabled, & [aria-disabled="true"] { cursor: image-set(url("cursors/not-allowed-16.png") 1x, url("cursors/not-allowed-32.png") 2x) 7 7, not-allowed; }
+  & [draggable="true"] { cursor: image-set(url("cursors/grab-16.png") 1x, url("cursors/grab-32.png") 2x) 7 1, grab; }
+  & [aria-busy="true"] { cursor: image-set(url("cursors/wait-16.png") 1x, url("cursors/wait-32.png") 2x) 7 7, wait; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-style="terminal"] .st-icon.st-running, :root[data-style="terminal"] .st-icon.st-waiting { animation: none; }
+  :root[data-style="terminal"] .st-icon.st-waiting {  /* the still hourglass */
+    -webkit-mask: image-set(url("icons/state-waiting.png") 1x, url("icons/32/state-waiting.png") 2x) center / 16px 16px no-repeat;
+    mask: image-set(url("icons/state-waiting.png") 1x, url("icons/32/state-waiting.png") 2x) center / 16px 16px no-repeat;
+  }
+}

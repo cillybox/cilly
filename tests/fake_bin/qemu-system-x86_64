@@ -1,0 +1,478 @@
+#!/usr/bin/env python3
+"""Fake QEMU for lifecycle tests: opens the same Unix sockets as the real
+command line and plays the guest runner's side of the control protocol.
+
+Behaviour knobs (environment): FAKE_MEMOUT=good|evil|none,
+FAKE_EXPORT=good|evil|badseq|git, FAKE_ATTACH=ok|fail.  FAKE_NO_LIVE=1: a Claude Code that
+doesn't take messages while it works.  FAKE_BUILD=ok|stuck: an image build VM, which finishes, or
+whose apt repeats the same retry until it's killed.  A message sent into a running task that says "refuse" is refused."""
+import base64
+import hashlib
+import io
+import json
+import os
+import socket
+import tarfile
+import time
+
+argv = os.sys.argv[1:]
+socks, drives = {}, {}
+for i, a in enumerate(argv):
+    if a == "-chardev" and argv[i + 1].startswith("socket,"):
+        opts = dict(kv.split("=", 1) for kv in argv[i + 1].split(",")[1:] if "=" in kv)
+        if opts.get("server") == "on":
+            socks[opts["id"]] = opts["path"]
+    if a == "-drive":
+        opts = dict(kv.split("=", 1) for kv in argv[i + 1].split(",") if "=" in kv)
+        drives[opts["id"]] = opts["file"]
+
+listeners = {}
+for cid, path in socks.items():
+    s = socket.socket(socket.AF_UNIX)
+    s.bind(path)
+    s.listen(1)
+    listeners[cid] = s
+
+log, _ = listeners["log"].accept()
+con, _ = listeners["con"].accept()
+con.sendall(b"fake console boot\n\x1b[1;32m[  OK  ]\x1b[0m Started \x1b[Kjournald\n")  # codes, like a real boot
+
+if os.environ.get("FAKE_BUILD") == "stuck":  # apt's delayed retry loop (Debian bug #1111554)
+    line = (b"[ 3561.72] cloud-init[537]: W: Tried to start delayed item https://deb.debian.org/debian "
+            b"trixie/main amd64 lib32gcc-s1 amd64 14.2.0-19, but failed\n")
+    while True:
+        con.sendall(line * 7)
+        time.sleep(0.05)
+if os.environ.get("FAKE_BUILD") == "ok":
+    con.sendall(b"[   27.30] cloud-init[535]: Get:358 https://deb.debian.org/debian trixie/main amd64 x all 1 [5600 B]\n")
+    log.sendall(b"CILLY-BUILD-OK\n")
+    raise SystemExit(0)
+
+
+SESSION = {}
+
+def say(text):
+    log.sendall((text + "\n").encode())
+
+
+# "persistent disk" check: count boots inside the root disk file
+with open(drives["root"], "a") as f:
+    f.write("boot\n")
+with open(drives["root"]) as f:
+    say(f"boots on this disk: {f.read().count('boot')}")
+
+with tarfile.open(drives["task"]) as tf:
+    boot = json.load(tf.extractfile("task.json"))
+    names = tf.getnames()
+    mem = [n for n in names if n.startswith("memory/")]
+    for n in mem:
+        m = tf.getmember(n)
+        if m.isfile():
+            say(f"restored {n}: {tf.extractfile(m).read().decode()}")
+say(f"boot mode={boot['mode']} repo={boot['repo']} memory_entries={len(mem)} restore={boot.get('restore_memory')}")
+say(f"boot ca={'yes' if (boot.get('ca') or '').startswith('-----BEGIN CERTIFICATE-----') else 'no'}")  # this start's CA
+
+ctl, _ = listeners["ctl"].accept()
+time.sleep(float(os.environ.get("FAKE_HELLO_WAIT", "0")))  # a guest still booting: nothing reads the control port yet
+_buf, PENDING = [b""], []
+OLD_RUNNER = bool(os.environ.get("FAKE_OLD_RUNNER"))  # one from before "interrupt": it ignores the message
+
+
+def read_line(timeout=None):
+    """The next control line; None when `timeout` runs out first, b"" at the end."""
+    while b"\n" not in _buf[0]:
+        ctl.settimeout(timeout)
+        try:
+            data = ctl.recv(65536)
+        except socket.timeout:
+            return None
+        finally:
+            ctl.settimeout(None)
+        if not data:
+            return b""
+        _buf[0] += data
+    line, _buf[0] = _buf[0].split(b"\n", 1)
+    return line
+
+
+def working(tid, seconds):
+    """Claude at work for a while: True if you interrupted it.  Other messages wait their turn."""
+    end = time.time() + seconds
+    while time.time() < end:
+        line = read_line(end - time.time())
+        if not line:
+            return False
+        msg = json.loads(line)
+        if msg.get("type") == "interrupt" and not OLD_RUNNER:
+            hit = msg.get("task") == tid
+            send(type="interrupt_ack", task=msg.get("task"), result="stopping" if hit else "idle")
+            if hit:
+                say(f"interrupted {tid}")
+                return True
+        elif msg.get("type") == "deliver" and not OLD_RUNNER:  # Send now into the running session: it keeps working
+            ok = msg.get("task") == tid and not os.environ.get("FAKE_NO_LIVE")
+            send(type="deliver_ack", task=msg.get("task"), id=msg.get("id"), result="delivered" if ok else "unsupported")
+            if ok and "refuse" in msg["text"]:  # Claude Code's receive-side policy turned it down
+                send(type="delivery", task=tid, id=msg["id"], state="refused")
+            elif ok:
+                say(f"delivered {msg['id']} into {tid}: {msg['text'][:60]!r}")
+                send(type="chat", task=tid, events=[{"k": "text", "text": f"Got it: {msg['text'][:200]}"}])
+        elif msg.get("type") != "interrupt":
+            PENDING.append(line)
+    return False
+
+
+def send(**msg):
+    ctl.sendall(json.dumps(msg).encode() + b"\n")
+
+
+def write_memout():
+    kind = os.environ.get("FAKE_MEMOUT", "good")
+    if "memout" not in drives or kind == "none":
+        return
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        def add(name, data: bytes):
+            ti = tarfile.TarInfo(name)
+            ti.size = len(data)
+            tar.addfile(ti, io.BytesIO(data))
+        d = tarfile.TarInfo("projects")
+        d.type = tarfile.DIRTYPE
+        tar.addfile(d)
+        add("projects/-home-agent-work-repo/s1.jsonl", b"conversation-v" + str(boot_count()).encode())
+        add("cilly-state.json", b'{"conversation": {"/home/agent/work/repo": true}}')
+        if kind == "evil":
+            ln = tarfile.TarInfo("projects/escape")
+            ln.type = tarfile.SYMTYPE
+            ln.linkname = "/home"
+            tar.addfile(ln)
+    with open(drives["memout"], "r+b") as out:
+        out.write(buf.getvalue())
+
+
+def boot_count():
+    with open(drives["root"]) as fh:
+        return fh.read().count("boot")
+
+
+def shutdown():
+    write_memout()
+    say("powering off")
+    log.close()
+    con.close()
+    raise SystemExit(0)
+
+
+def export(msg):
+    kind = os.environ.get("FAKE_EXPORT", "good")
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        def add(name, data: bytes, mode=0o644):
+            ti = tarfile.TarInfo(name)
+            ti.size, ti.mode = len(data), mode
+            tar.addfile(ti, io.BytesIO(data))
+        d = tarfile.TarInfo("art")
+        d.type = tarfile.DIRTYPE
+        tar.addfile(d)
+        add("README.md", f"exported {msg['what']}".encode())
+        add("art/sprite.png", b"\x89PNG" + bytes(range(256)) * 3000, 0o755)
+        if kind == "evil":
+            add("../escape.txt", b"nope")
+        if kind == "git":  # an older runner sends ~/scratch/.git along
+            add(".git/config", b"[core]\n\tfsmonitor = touch /tmp/cilly-pwned\n")
+    data = buf.getvalue()
+    step = 300_000
+    chunks = [data[i:i + step] for i in range(0, len(data), step)]
+    for i, c in enumerate(chunks):
+        send(type="export_chunk", id=msg["id"], seq=i + (1 if kind == "badseq" and i else 0),
+             data=base64.b64encode(c).decode())
+    send(type="export_end", id=msg["id"], chunks=len(chunks), bytes=len(data), sha256=hashlib.sha256(data).hexdigest())
+
+
+def _png(w, h):
+    import struct
+    import zlib
+
+    def chunk(t, d):
+        return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xFFFFFFFF)
+    rows = b"".join(b"\0" + bytes(c for x in range(w) for c in (x * 255 // w, y * 255 // h, 160)) for y in range(h))
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
+
+
+# what list_files / read_file see, per source: path -> bytes (folders end in /)
+FAKE_FILES = {"outbox": {
+    "report.md": "# Report\n\nAll tests pass.\nif (isAdmin \u202e) { grant(); }\n".encode(),
+    "screenshot.png": _png(320, 200),
+    "photo.png": b"PK\x03\x04 not a picture",
+    "deploy.sh": b"#!/bin/sh\necho deploying\n",
+    "notes/": None, "notes/todo.txt": b"1. ship it\n",
+}}
+MTIMES = {}  # path -> when a task last wrote it
+if os.environ.get("FAKE_OUTBOX_IMAGE"):  # a real picture for the README's demo (tools/readme_shots.js)
+    with open(os.environ["FAKE_OUTBOX_IMAGE"], "rb") as f:
+        FAKE_FILES["outbox"][os.path.basename(os.environ["FAKE_OUTBOX_IMAGE"])] = f.read()
+if os.environ.get("FAKE_NOTES"):  # notes an agent suggests for its project
+    FAKE_FILES["outbox"]["project-notes.md"] = os.environ["FAKE_NOTES"].encode()
+
+
+def list_files(msg):
+    files = FAKE_FILES.get(msg.get("what"), {})
+    pre = (msg.get("path") or "").strip("/")
+    pre = pre + "/" if pre else ""
+    out = []
+    for k, v in files.items():
+        if k.startswith(pre) and k != pre:
+            rest = k[len(pre):]
+            if "/" in rest.rstrip("/"):
+                continue
+            out.append({"name": rest.rstrip("/"), "kind": "dir" if k.endswith("/") else "file", "size": len(v or b""), "mtime": MTIMES.get(k, 0)})
+    send(type="files_list", id=msg["id"], entries=out)
+
+
+def read_file(msg):
+    data = FAKE_FILES.get(msg.get("what"), {}).get(msg.get("path"))
+    if data is None:
+        send(type="file_failed", id=msg["id"], error="not a regular file")
+        return
+    send(type="file_chunk", id=msg["id"], seq=0, data=base64.b64encode(data).decode())
+    send(type="file_end", id=msg["id"], chunks=1, bytes=len(data), sha256=hashlib.sha256(data).hexdigest())
+
+
+attached = {}
+while True:
+    line = PENDING.pop(0) if PENDING else read_line()
+    if not line:
+        break
+    msg = json.loads(line)
+    t = msg.get("type")
+    if t == "attach_chunk":
+        attached.setdefault((msg["set"], msg["name"]), []).append(base64.b64decode(msg["data"]))
+        continue
+    if t == "attach_end":
+        data = b"".join(attached.pop((msg["set"], msg["name"]), []))
+        ok = hashlib.sha256(data).hexdigest() == msg["sha256"] and len(data) > 0
+        say(f"attached /attachments/{msg['set']}/{msg['name']} size={len(data)} sha_ok={ok}")
+        FAKE_FILES.setdefault("attachments", {})[f"{msg['set']}/{msg['name']}"] = data
+        continue
+    if t == "export":
+        export(msg)
+        continue
+    if t == "list_files":
+        list_files(msg)
+        continue
+    if t == "interrupt":
+        if not OLD_RUNNER:
+            send(type="interrupt_ack", task=msg.get("task"), result="idle")
+        continue
+    if t == "deliver":
+        if not OLD_RUNNER:
+            send(type="deliver_ack", task=msg.get("task"), id=msg.get("id"), result="unsupported")
+        continue
+    if t == "read_file":
+        read_file(msg)
+        continue
+    if t == "task" and msg.get("attach"):
+        say(f"attach {msg['repo']} branch={msg['branch']} env={','.join(sorted(msg['env']))}")
+        send(type="status", task=msg["id"], state="running", branch=msg["branch"])
+        if os.environ.get("FAKE_ATTACH", "ok") == "fail":
+            send(type="status", task=msg["id"], state="failed", error="repo is empty")
+        else:
+            send(type="status", task=msg["id"], state="done", agent_rc=0, branch=msg["branch"],
+                 pr=f"https://github.com/{msg['repo']}/pull/1")
+        continue
+    if t == "hello" and boot.get("move") and os.environ.get("FAKE_MOVE") != "old":
+        kind = boot["move"]
+        send(type="phase", phase="move")
+        if os.environ.get("FAKE_MOVE") == f"fail_{kind}":
+            send(type="moved", step=kind, ok=False, error=f"no room left to {kind}")
+            raise SystemExit(0)
+        if kind == "export":
+            with open(drives["root"], "rb") as f:
+                home = f.read()
+            with open(drives["transfer"], "r+b") as f:
+                f.write(b"CILLY-HOME-1\n" + json.dumps({"bytes": len(home)}).encode() + b"\n")
+                f.seek(4096)
+                f.write(home)
+            send(type="moved", step=kind, ok=True, bytes=len(home))
+        else:
+            with open(drives["transfer"], "rb") as f:
+                head = f.read(4096)
+                n = json.loads(head.split(b"\n")[1])["bytes"]
+                home = f.read(n)
+            with open(drives["root"], "ab") as f:
+                f.write(b"home from the old disk:\n" + home)
+            send(type="moved", step=kind, ok=True, bytes=n, entries=home.count(b"\n"), skipped=0)
+        raise SystemExit(0)  # powers off
+    if t == "hello":
+        pol = msg["policy"]
+        say(f"policy mode={pol['permission_mode']} md={len(pol['claude_md'])} version={pol.get('version')}")
+        say("\x1b[32mselftest PASS\x1b[0m: \x1b[1mfake\x1b[0m network check \x1b]0;title\x07done")
+        send(type="phase", phase="policy")
+        import time
+        time.sleep(float(os.environ.get("FAKE_BOOT_DELAY", "0")))  # lets UI tests see the boot progress
+        send(type="phase", phase="rm -rf /")  # not a known phase: ignored
+        send(type="phase", phase="selftest")
+        ready = {} if OLD_RUNNER else {"deliver": True}
+        send(type="ready", selftest={"direct TCP blocked": True}, **ready)
+        if os.environ.get("FAKE_READY_AGAIN"):  # a hostile guest: "ready" again, later
+            time.sleep(float(os.environ["FAKE_READY_AGAIN"]))
+            send(type="ready", selftest={"direct TCP blocked": True}, **ready)
+    elif t == "policy":
+        say("policy updated: " + msg["policy"]["claude_md"][:40])
+        send(type="policy_applied")
+    elif t == "outbox_ok":
+        say(f"outbox_ok {msg['task']}")
+    elif t == "outbox_refused":
+        say(f"outbox_refused {msg['task']}: {msg['error']}")
+    elif t == "inbox":
+        say(f"inbox {msg['id']} files={','.join(f['path'] for f in msg['files'])} title={msg['title'][:40]}")
+        send(type="inbox_ok", id=msg["id"])
+    elif t == "task" and boot.get("profile") == "research":
+        say(f"research task {msg['id']} env={','.join(sorted(msg['env']))} q={msg['summary'][:60]}")
+        send(type="status", task=msg["id"], state="running")
+        big = os.environ.get("FAKE_BIG_FINDINGS")  # 2 MiB of non-ASCII text, the way a runner sends it
+        if big:
+            files = [{"path": f"part{i}.md", "content": ("Größe ✓ 🔬 " * 70_000)[:340_000]} for i in range(3)]
+        if big == "old":  # one line, as older runners did: over the host's line limit once escaped
+            send(type="outbox", task=msg["id"], files=files)
+        elif big:
+            data = json.dumps(files, ensure_ascii=False).encode()
+            chunks = [data[i:i + 512 * 1024] for i in range(0, len(data), 512 * 1024)]
+            for seq, c in enumerate(chunks):
+                send(type="outbox_chunk", task=msg["id"], seq=seq, data=base64.b64encode(c).decode())
+            send(type="outbox_end", task=msg["id"], chunks=len(chunks), sha256=hashlib.sha256(data).hexdigest())
+        else:
+            send(type="outbox", task=msg["id"], files=[
+                {"path": "findings.md", "content": "# Findings\nGitHub Flavored Markdown adds tables. https://github.github.com/gfm/"}]
+                + ([{"path": ".git/config", "content": "[core]\n\tpager = touch /tmp/x\n"}] if os.environ.get("FAKE_GIT_FINDINGS") else []))
+        send(type="outbox_images", task=msg["id"], files=["screenshot.png"])  # shown in its chat, not part of the findings
+        send(type="status", task=msg["id"], state="done", agent_rc=0, outbox_files=1)
+    elif t == "task":
+        if msg.get("attachments"):
+            say("LEAK: host attachment paths reached the guest")
+        if "proxy_models" in msg:
+            say("LEAK: a model server's address and key reached the guest")
+        say(f"task {msg['id']} branch={msg['branch']} continue={msg['continue']} model={msg.get('model')} effort={msg.get('effort')} resume={msg.get('resume')} env={','.join(sorted(msg['env']))}"
+            f" timeout={msg.get('timeout_s')} bash={(msg.get('agent_env') or {}).get('BASH_MAX_TIMEOUT_MS')}"
+            f" head={msg['instructions'][:80]!r} tail={msg['instructions'][-80:]!r}")
+        if msg["instructions"].startswith("write outbox "):  # "write outbox NAME\nCONTENT": an agent (re)writing a file
+            head, _, body = msg["instructions"].partition("\n")
+            name = head.split(" ", 2)[2]
+            FAKE_FILES["outbox"][name] = body.encode()
+            MTIMES[name] = int(time.time())
+        if "print your token" in msg["instructions"]:  # an agent showing a secret it holds
+            tok = msg["env"].get("GH_TOKEN", "")
+            say(f"the agent printed {tok} to the log")
+            send(type="chat", task=msg["id"], events=[{"k": "text", "text": f"Your token is {tok}."}])
+        if os.environ.get("FAKE_REQUEST") and "Research results" not in msg["instructions"]:
+            send(type="research_requests", task=msg["id"],
+                 requests=[{"name": "markdown-tables", "text": "How do Markdown tables render in CommonMark?"}])
+        send(type="status", task=msg["id"], state="running", branch=msg["branch"])
+        if not OLD_RUNNER and not os.environ.get("FAKE_NO_LIVE"):
+            send(type="live", task=msg["id"])
+            send(type="live", task="not-a-task")
+        if "ignore the limit" in msg["instructions"]:  # a VM that never ends the task, and ignores interrupts too
+            if "end a made-up task" in msg["instructions"]:  # and says one it never got is done
+                send(type="status", task="0badc0de", state="done", agent_rc=0)
+                send(type="outbox_images", task=msg["id"], files=["after-the-made-up-end.png"])  # a marker for tests
+            continue
+        if "flood summaries" in msg["instructions"]:  # a hostile guest: many lines, many times
+            for i in range(200):
+                send(type="summary", text=f"\n\x1b[31mline {i}\u200b\nsecond line\rthird")
+        if "ask me" in msg["instructions"]:  # the agent asks the user (its ~/ask/ file, sent after the task)
+            send(type="questions", task=msg["id"], files=[{"name": "sprites.json", "text": json.dumps({"version": 1, "questions": [
+                {"header": "Style", "question": "Which pixel art style should the sprites use?", "options": [
+                    {"label": "16x16, 4 colors", "description": "Matches the existing tiles. Recommended."},
+                    {"label": "32x32, full palette", "description": "More detail, four times the drawing."},
+                    {"label": "Hand-drawn look"}]},
+                {"header": "Animations", "question": "Which animations do you need first?", "multi": True, "options": [
+                    {"label": "Idle", "description": "Two frames, breathing."}, {"label": "Walk", "description": "Six frames."},
+                    {"label": "Attack"}, {"label": "Death"}]},
+                {"header": "Output", "question": "Where should the finished sprites go?", "options": [
+                    {"label": "~/outbox", "description": "You copy them where you need them."},
+                    {"label": "The repository", "description": "Committed under assets/sprites/."}]}]})}])
+        if "hostile ask" in msg["instructions"]:  # oversized, malformed and too many files: all refused
+            good = json.dumps({"version": 1, "questions": [{"header": "Ok", "question": "Fine?", "options": [{"label": "Yes"}, {"label": "No"}]}]})
+            send(type="questions", task=msg["id"], files=[{"name": "big.json", "text": "x" * 20000}, {"name": "../up.json", "text": good},
+                 {"name": "bad.json", "text": "{not json"}, {"name": "long.json", "text": good.replace('"Ok"', '"Much too long header"')},
+                 {"name": "a.json", "text": good}, {"name": "b.json", "text": good}])
+            send(type="questions", task=msg["id"], files=[{"name": "again.json", "text": good}])  # a second batch for one task
+        if not OLD_RUNNER:  # newer runners send the agent's ~/status.txt
+            send(type="summary", text=os.environ.get("FAKE_SUMMARY", "Added per-site ports, tests pass, PR open"))
+        # like claude: --continue/--resume keep the session id, a fresh start gets a new one
+        sid = msg.get("resume") or (SESSION.get("cur") if msg["continue"] else None) or f"{msg['id']}-0000-4000-8000-000000000000"
+        SESSION["cur"] = sid
+        if not OLD_RUNNER and "no context" not in msg["instructions"]:  # how full the conversation is: 40k per task
+            SESSION[sid + ":used"] = SESSION.get(sid + ":used", 0) + 40000
+            send(type="context", task=msg["id"], used=SESSION[sid + ":used"], window=200000)
+            for bad in ({"used": -1}, {"used": True}, {"used": "9"}, {"used": 5, "window": 10**12}, {"used": 5, "window": 10}):
+                send(type="context", task=msg["id"], **bad)  # a hostile guest: all refused
+            send(type="context", task="not-a-task", used=7)
+        if "stream events" in msg["instructions"]:  # a long output, then one step at a time, for UI tests
+            out = "\n".join(f"line {i}: compiling module {i} of 300" for i in range(300))
+            send(type="chat", task=msg["id"], events=[{"k": "tool", "id": "s0", "tool": "Bash", "verb": "Ran", "target": "./gradlew build"},
+                                                      {"k": "result", "id": "s0", "ok": True, "summary": "BUILD SUCCESSFUL", "out": out}])
+            stopped = False
+            for i in range(int(os.environ.get("FAKE_STREAM", "60"))):
+                if working(msg["id"], float(os.environ.get("FAKE_STREAM_DELAY", "0.5"))):  # answers interrupts meanwhile
+                    stopped = True
+                    break
+                send(type="chat", task=msg["id"], events=[{"k": "text", "text": f"Step {i + 1}: checked another file."}])
+            if stopped and os.environ.get("FAKE_DONE_ON_INTERRUPT"):  # Claude was done, only the commit and push were left
+                send(type="status", task=msg["id"], state="done", agent_rc=0, branch=msg["branch"])
+                continue
+            if stopped:
+                send(type="status", task=msg["id"], state="interrupted", agent_rc=-15, branch=msg["branch"])
+                continue
+        if "subagents" in msg["instructions"]:  # a slow run with a subagent and a background command, for UI tests
+            send(type="chat", task=msg["id"], events=[
+                {"k": "text", "text": "I'll split this up."},
+                {"k": "tool", "id": "ag1", "tool": "Agent", "verb": "Delegated", "target": "Find the recipe API", "sub": "Explore", "bg": True,
+                 "detail": "Look through src/ for where recipes are registered and report the class names."},
+                {"k": "sub", "id": "ag1", "state": "running", "desc": "Find the recipe API", "sub": "Explore", "bg": True},
+                {"k": "tool", "id": "c1", "tool": "Grep", "verb": "Searched", "target": "Recipe", "parent": "ag1"},
+                {"k": "result", "id": "c1", "ok": True, "summary": "src/A.java", "out": "src/A.java\nsrc/B.java", "parent": "ag1"},
+                {"k": "tool", "id": "b1", "tool": "Bash", "verb": "Ran", "target": "./gradlew test --continuous", "bg": True,
+                 "detail": "./gradlew test --continuous \\\n  --info | tee /tmp/test.log  # watch mode"},
+                {"k": "sub", "id": "b1", "state": "running", "desc": "./gradlew test --continuous"},
+                {"k": "sub", "id": "ag1", "state": "running", "tools": 1, "tokens": 12400, "ms": 3000, "last": "Grep"}])
+            if working(msg["id"], float(os.environ.get("FAKE_SUB_DELAY", "6"))):
+                send(type="chat", task=msg["id"], events=[{"k": "sub", "id": "ag1", "state": "stopped"}, {"k": "sub", "id": "b1", "state": "stopped"}])
+                send(type="status", task=msg["id"], state="interrupted", agent_rc=-15, branch=msg["branch"],
+                     pr=f"https://github.com/{boot['repo']}/pull/7")
+                continue
+            send(type="chat", task=msg["id"], events=[
+                {"k": "tool", "id": "c2", "tool": "Read", "verb": "Read", "target": "src/A.java", "parent": "ag1"},
+                {"k": "result", "id": "c2", "ok": True, "summary": "120 lines", "parent": "ag1"},
+                {"k": "sub", "id": "ag1", "state": "completed", "tools": 2, "tokens": 18200, "ms": 7000,
+                 "summary": "Recipes are registered in **A.java** via `RecipeManager`."},
+                {"k": "sub", "id": "b1", "state": "stopped"}])
+        send(type="chat", task=msg["id"], events=[
+            {"k": "text", "text": "Looking at the build."},
+            {"k": "tool", "id": "t1", "tool": "Bash", "verb": "Ran", "target": "./gradlew build"},
+            {"k": "result", "id": "t1", "ok": True, "summary": "BUILD SUCCESSFUL"},
+            {"k": "tool", "id": "t4", "tool": "Bash", "verb": "Ran", "target": "npx playwright screenshot http://localhost:8080 ~/outbox/screenshot.png"},
+            {"k": "result", "id": "t4", "ok": True, "summary": "Capturing screenshot into ~/outbox/screenshot.png"},
+            {"k": "diff", "id": "t2", "file": "src/Plugin.java", "add": 1, "del": 0, "lines": [["+", "int x = 1;"], ["?", "bad sign"]]},
+            {"k": "html", "text": "<script>alert(1)</script>"},
+            {"k": "text", "text": "x" * 50000},
+            {"k": "text", "text": "## Plan\n- **Fix** `build.gradle`\n- add a test\n\n```kotlin\nval x = 1\n```\n"
+                                  "See [the repo](https://github.com/me/repo) and [docs](https://evil.example/x)."},
+            {"k": "status", "text": "Compacting the conversation…\n<b>"},
+            {"k": "done", "ok": True, "turns": 3, "ms": 1200, "cost": 0.01, "sid": sid}])
+        send(type="chat", task=msg["id"], events=[{"k": "done", "ok": True, "sid": "../../etc"}])  # bad id: dropped
+        send(type="chat", task="not-a-task", events=[{"k": "text", "text": "spoofed"}])
+        # things a compromised guest might try; the panel must ignore them
+        send(type="status", task=msg["id"], pr="https://github.com/login/oauth/authorize?x=1")
+        send(type="status", task=msg["id"], branch="main")
+        log.sendall(b"| " + json.dumps({"type": "status", "state": "failed"}).encode() + b"\n")
+        send(type="outbox_images", task=msg["id"], files=["screenshot.png", "../../etc/passwd.png", "x.sh"])
+        send(type="status", task=msg["id"], state="done", agent_rc=0, branch=msg["branch"],
+             pr=f"https://github.com/{boot['repo']}/pull/7")
+        if "come back" in msg["instructions"]:  # a hostile guest: the task it just ended runs again
+            send(type="status", task=msg["id"], state="running")
+        if boot.get("auto_stop"):
+            shutdown()
+    elif t == "shutdown":
+        shutdown()

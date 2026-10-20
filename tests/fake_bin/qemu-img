@@ -1,0 +1,8 @@
+#!/bin/sh
+# Fake qemu-img: `create ... <path>` just creates an empty file, and `info` says a disk is 20 GiB.
+if [ "$1" = info ]; then
+  echo '{"virtual-size": 21474836480, "format": "qcow2"}'
+  exit 0
+fi
+for last; do :; done
+: > "$last"

@@ -1,0 +1,17 @@
+[Unit]
+Description=cilly agent task runner
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Nothing the runner starts (the agent included) can gain privileges through
+# setuid programs or file capabilities.  The runner sets this itself too.
+NoNewPrivileges=yes
+ExecStart=/usr/local/sbin/cilly-runner
+StandardOutput=journal+console
+StandardError=journal+console
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

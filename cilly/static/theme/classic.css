@@ -1,0 +1,64 @@
+/* The Classic style's icons: Phosphor (MIT, theme/phosphor/LICENSE), tinted with the text color through a mask.
+   They sit where Classic had a text glyph or no icon, like the Terminal style's pixel icons (terminal.css). */
+
+:root:not([data-style="terminal"]) {
+  /* a glyph replaced by an icon */
+  & #sb-new .plus, & .round.send, & .icon-btn[aria-label="More actions"], & .icon-btn[aria-label="Back to agents"], & .icon-btn.m-back,
+  & .icon-btn[aria-label="Close"], & .round[aria-label="Attach files"], & .round[aria-label="Refresh"], & .composer .x,
+  & .sb-add, & .sb-more, & .fold-mark, & .lb-nav, & .chev { font-size: 0; }
+  & #sb-new .plus::before, & .round.send::before, & .icon-btn[aria-label="More actions"]::before, & .icon-btn.m-back::before,
+  & .icon-btn[aria-label="Close"]::before, & .round[aria-label="Attach files"]::before, & .round[aria-label="Refresh"]::before,
+  & .composer .x::before, & .sb-add::before, & .sb-more::before, & .fold-mark::before, & .lb-nav::before, & .hint::before, & #sb-inbox::before, & #sb-prs::before,
+  & #sb-policy::before, & #sb-settings::before, & .tool-line .verb[data-verb]::before, & .head-ss::before, & .chev::before {
+    content: ""; display: inline-block; flex: none; width: 16px; height: 16px; vertical-align: -3px; background: currentColor;
+    -webkit-mask: var(--i) center / 16px 16px no-repeat; mask: var(--i) center / 16px 16px no-repeat;
+  }
+  & #sb-inbox::before, & #sb-prs::before, & #sb-policy::before, & #sb-settings::before, & .head-ss::before,
+  & .tool-line .verb[data-verb]::before, & .hint::before { margin-right: 8px; }
+  & #sb-new .plus::before, & .sb-add::before { --i: url("phosphor/plus.svg"); }
+  & #sb-inbox::before { --i: url("phosphor/tray.svg"); }
+  & #sb-prs::before { --i: url("phosphor/git-pull-request.svg"); }
+  & #sb-policy::before { --i: url("phosphor/scroll.svg"); }
+  & #sb-settings::before { --i: url("phosphor/gear.svg"); }
+  & .round.send::before { --i: url("phosphor/arrow-up.svg"); }
+  & .round[aria-label="Attach files"]::before { --i: url("phosphor/paperclip.svg"); }
+  & .round[aria-label="Refresh"]::before { --i: url("phosphor/arrow-clockwise.svg"); }
+  & .icon-btn[aria-label="More actions"]::before { --i: url("phosphor/dots-three.svg"); }
+  & .sb-more::before { --i: url("phosphor/dots-three.svg"); }
+  & .icon-btn.m-back::before { --i: url("phosphor/arrow-left.svg"); }
+  & .icon-btn[aria-label="Close"]::before, & .composer .x::before { --i: url("phosphor/x.svg"); }
+  & .head-ss.start::before { --i: url("phosphor/play.svg"); }
+  & .head-ss.stop::before { --i: url("phosphor/stop.svg"); }
+  & .chev::before, & .fold-mark::before { --i: url("phosphor/caret-right.svg"); }
+  & .fold-mark.open::before { --i: url("phosphor/caret-down.svg"); }
+  & .lb-nav[aria-label="Previous image"]::before { --i: url("phosphor/caret-left.svg"); }
+  & .lb-nav[aria-label="Next image"]::before { --i: url("phosphor/caret-right.svg"); }
+  & .hint::before { --i: url("phosphor/info.svg"); }
+  & .tool-line .verb[data-verb="Read"]::before { --i: url("phosphor/eye.svg"); }
+  & .tool-line .verb[data-verb="Ran"]::before { --i: url("phosphor/terminal-window.svg"); }
+  & .tool-line .verb:is([data-verb="Edited"], [data-verb="Planned"])::before { --i: url("phosphor/pencil-simple.svg"); }
+  & .tool-line .verb:is([data-verb="Wrote"], [data-verb="Attached"], [data-verb="Delegated"])::before { --i: url("phosphor/file-plus.svg"); }
+  & .tool-line .verb:is([data-verb="Searched"], [data-verb="Listed"])::before { --i: url("phosphor/magnifying-glass.svg"); }
+  & .tool-line .verb[data-verb="Fetched"]::before { --i: url("phosphor/globe.svg"); }
+  & .tool-line .verb:not([data-verb])::before, & .tool-line .verb[data-verb=""]::before { display: none; }
+  & .tool-line .verb { display: inline-flex; align-items: center; }
+
+  /* the (i) of a longer explanation: outlined, filled while open */
+  & .info-i { font-size: 0; width: 16px; height: 16px; border: 0; border-radius: 0; background: currentColor;
+    -webkit-mask: url("phosphor/info.svg") center / 16px 16px no-repeat; mask: url("phosphor/info.svg") center / 16px 16px no-repeat; }
+  & .info-btn:hover .info-i, & .info-tip:focus-within .info-i { -webkit-mask-image: url("phosphor/info-fill.svg"); mask-image: url("phosphor/info-fill.svg"); }
+
+  /* dropdowns drawn by the page: a caret that turns up while open, and a tick */
+  & select::picker-icon { content: ""; width: 16px; height: 16px; background: currentColor;
+    -webkit-mask: url("phosphor/caret-down.svg") center / 16px 16px no-repeat; mask: url("phosphor/caret-down.svg") center / 16px 16px no-repeat; }
+  & select:open::picker-icon { -webkit-mask-image: url("phosphor/caret-up.svg"); mask-image: url("phosphor/caret-up.svg"); }
+  & option::checkmark { content: ""; width: 16px; height: 16px; background: currentColor;
+    -webkit-mask: url("phosphor/check.svg") center / 16px 16px no-repeat; mask: url("phosphor/check.svg") center / 16px 16px no-repeat; }
+
+  /* warnings: the filled triangle in front */
+  & .note-box.warn::before, & .vm-note.warn::before, & .desc.warn::before {
+    content: ""; display: inline-block; flex: none; width: 16px; height: 16px; vertical-align: -3px; margin-right: 6px; background: currentColor;
+    -webkit-mask: url("phosphor/warning-fill.svg") center / 16px 16px no-repeat; mask: url("phosphor/warning-fill.svg") center / 16px 16px no-repeat;
+  }
+  & .note-box.warn::before { margin-top: 2px; }
+}

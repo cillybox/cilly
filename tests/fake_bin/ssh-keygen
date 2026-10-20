@@ -1,0 +1,16 @@
+#!/usr/bin/env python3
+"""Fake ssh-keygen -q -t ed25519 -N "" -C COMMENT -f PATH: a key pair of the right shape."""
+import base64
+import os
+import sys
+
+a = sys.argv
+path, comment = a[a.index("-f") + 1], a[a.index("-C") + 1]
+blob = len(b"ssh-ed25519").to_bytes(4, "big") + b"ssh-ed25519" + (32).to_bytes(4, "big") + os.urandom(32)
+body = base64.b64encode(b"openssh-key-v1\0" + os.urandom(200)).decode()
+fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+with os.fdopen(fd, "w") as f:
+    f.write("-----BEGIN OPENSSH PRIVATE KEY-----\n" + "\n".join(body[i:i + 70] for i in range(0, len(body), 70))
+            + "\n-----END OPENSSH PRIVATE KEY-----\n")
+with open(path + ".pub", "w") as f:
+    f.write(f"ssh-ed25519 {base64.b64encode(blob).decode()} {comment}\n")
