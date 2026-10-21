@@ -166,6 +166,10 @@ function imageSelect(value, onPick, profile) {  // "" = the default image for th
 }
 const PHONE_QUERY = "(max-width: 640px), (max-height: 500px) and (pointer: coarse)";  // narrow, or a phone on its side; keep in step with style.css
 const isPhone = () => window.matchMedia(PHONE_QUERY).matches;
+// GitHub accounts (a token each) that have a repository ticked, the default first, and the one an agent gets:
+// the one it was given while that one still has the repository, else the default
+const accountsFor = (repo) => (STATE?.accounts || []).filter((a) => a.repos.includes(repo));
+const accountOf = (repo, prefer) => { const as = accountsFor(repo); return as.find((a) => a.token === prefer) || as[0] || null; };
 const SMOOTH = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
 
 // Every .modal-back is a dialog: name it from its heading, keep Tab and the page behind it out of reach, and hand focus back on close.
@@ -319,6 +323,28 @@ function promptModal(title, hint, value, action) {  // -> the text, or null if c
     syncBack();
     inp.focus(); inp.select();
   });
+}
+// A small form: `body` is its fields, `submit` runs on the action button (or Enter in a field) and may be
+// async.  What it throws is shown in the dialog, which stays open; it closes once `submit` is done.
+function formModal(title, body, action, submit, focus) {
+  const err = el("div", { class: "err small pretty", role: "alert", hidden: true });
+  const done = () => { back.remove(); document.removeEventListener("keydown", esc, true); };
+  const esc = (e) => { if (e.key === "Escape") { e.stopPropagation(); done(); } };
+  const ok = el("button", { class: "btn primary" }, action);
+  const go = async () => {
+    ok.disabled = true; err.hidden = true;
+    try { await submit(); done(); }
+    catch (e) { err.textContent = e.message; err.hidden = false; ok.disabled = false; }
+  };
+  ok.onclick = go;
+  const back = el("div", { class: "modal-back", onclick: (e) => { if (e.target === back) done(); } },
+    el("div", { class: "modal stack", role: "dialog", "aria-modal": "true" }, el("h3", {}, title), ...body, err,
+      el("div", { class: "actions" }, el("button", { class: "btn ghost", onclick: done }, "Cancel"), ok)));
+  back.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.tagName === "INPUT") { e.preventDefault(); go(); } });
+  document.addEventListener("keydown", esc, true);
+  document.body.append(back);
+  syncBack();
+  (focus || ok).focus();
 }
 // Rename in place: `shown` makes way for a field. Enter or clicking away saves, Esc keeps the old name.
 // `wrap` puts the field where `shown` was (a row keeps its icon), and redraws wait while it has focus.

@@ -765,10 +765,12 @@ def validate(cfg: dict) -> None:
             _check_secret_ref(ref, f"agents.{name}.secrets.{sname}")
         normalize_allowlist(a.get("egress_extra", []))
     ident = cfg["identity"]
-    if not re.match(r"^[A-Za-z0-9_.-]{1,64}$", ident["name"]):
-        raise ValueError("identity.name must be a simple handle")
-    if not re.match(r"^[0-9]+\+[A-Za-z0-9_.-]+@users\.noreply\.github\.com$", ident["email"]):
-        raise ValueError("identity.email must be a GitHub noreply address (ID+handle@users.noreply.github.com)")
+    _check_identity(ident, "identity")
+    for name, t in cfg["tokens"].items():
+        if "identity" in t:
+            if not isinstance(t["identity"], dict):
+                raise ValueError(f"tokens.{name}.identity must have a name and an email")
+            _check_identity(t["identity"], f"tokens.{name}.identity")
     if not re.match(r"^[A-Za-z0-9_.-]+/$", ident["branch_prefix"]) or ident["branch_prefix"] in ("main/", "master/"):
         raise ValueError("identity.branch_prefix must look like 'cilly/'")
     if ident.get("branch_names", "kind") not in BRANCH_NAMES:
@@ -777,9 +779,28 @@ def validate(cfg: dict) -> None:
     check_appearance(cfg.get("appearance", {}))
 
 
-def placeholder_identity(cfg: dict) -> bool:
+def _check_identity(ident: dict, where: str) -> None:
+    if not isinstance(ident.get("name"), str) or not re.match(r"^[A-Za-z0-9_.-]{1,64}$", ident["name"]):
+        raise ValueError(f"{where}.name must be a simple handle")
+    if not isinstance(ident.get("email"), str) or not re.match(r"^[0-9]+\+[A-Za-z0-9_.-]+@users\.noreply\.github\.com$", ident["email"]):
+        raise ValueError(f"{where}.email must be a GitHub noreply address (ID+handle@users.noreply.github.com)")
+
+
+# ---- accounts: each token is a bot account, and its agents commit as that account ----------------
+TOKEN_NAME = re.compile(r"[A-Za-z0-9_.-]{1,64}")  # for accounts added from Settings
+
+
+def account_identity(cfg: dict, token: str | None) -> dict:
+    """The name and email an account's agents commit as.  A token without its own uses the shared
+    one in identity, which is where it was kept before accounts had their own."""
+    ident = (cfg["tokens"].get(token) or {}).get("identity") if token else None
+    src = ident if isinstance(ident, dict) else cfg["identity"]
+    return {"name": src["name"], "email": src["email"]}
+
+
+def placeholder_identity(cfg: dict, token: str | None = None) -> bool:
     """Whether agents still commit as the made-up default, which GitHub links to no account."""
-    return cfg["identity"]["email"].startswith("00000000+")
+    return account_identity(cfg, token or next(iter(cfg["tokens"]), None))["email"].startswith("00000000+")
 
 
 # ---- branch names ----------------------------------------------------------------------------
@@ -858,8 +879,13 @@ def repos(cfg: dict) -> list[str]:
     return seen
 
 
-def token_for_repo(cfg: dict, repo: str) -> str | None:
-    for name, t in cfg["tokens"].items():
-        if repo in t.get("repos", []):
-            return name
-    return None
+def tokens_for_repo(cfg: dict, repo: str) -> list[str]:
+    """The accounts whose token has the repository ticked, the default one first."""
+    return [name for name, t in cfg["tokens"].items() if repo in t.get("repos", [])]
+
+
+def token_for_repo(cfg: dict, repo: str, prefer: str | None = None) -> str | None:
+    """The token an agent gets for its repository: the account it was given, while that account
+    still has the repository ticked, else the first one that has."""
+    names = tokens_for_repo(cfg, repo)
+    return prefer if prefer in names else (names[0] if names else None)

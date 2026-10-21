@@ -39,7 +39,7 @@ VIEWS.project = {
     if (!p) { P.inner.replaceChildren(el("div", { class: "dashed-empty" }, "This project doesn't exist anymore.")); return; }
     const members = STATE.agents_list.filter((a) => a.project === p.id);
     // a typed draft survives redraws until you save it
-    if (!changed("project", [p, members.map((a) => [a.id, a.name, statusText(a)]), isOwner(), isPhone(), STATE.repos, STATE.mcp_servers, STATE.plugins, STATE.skills, STATE.images,
+    if (!changed("project", [p, members.map((a) => [a.id, a.name, statusText(a)]), isOwner(), isPhone(), STATE.repos, STATE.accounts, STATE.mcp_servers, STATE.plugins, STATE.skills, STATE.images,
       STATE.agents_list.filter((a) => a.profile === "research").map((a) => [a.id, a.name])])) return;
     if (P.inner.contains(document.activeElement) && document.activeElement.matches("textarea, input:not([type=checkbox])")) { SIGS.project = null; return; }  // not while you type
     const drafts = PROJECT_DRAFTS[p.id] ||= {};
@@ -187,6 +187,16 @@ function projectParts(p, drafts) {
   });
   const pdRow = (...cells) => el("div", { class: "pd-row" + (cells.length > 1 ? " two" : "") }, ...cells);  // one or two settings side by side
   const optSec = (label, ...body) => el("div", { class: "opt-sec" }, el("span", { class: "muted small" }, label), ...body);
+  // which GitHub account new agents here use, for a repository more than one account has ticked
+  const shared = (p.repos.length ? p.repos : STATE.repos || []).filter((r) => accountsFor(r).length > 1);
+  const acctChoices = (STATE.accounts || []).filter((a) => shared.some((r) => a.repos.includes(r)));
+  let acctSel = "";
+  if (shared.length || d.account) {
+    acctSel = el("select", { class: "select", "aria-label": "GitHub account" }, el("option", { value: "" }, "The default for each repository"),
+      ...acctChoices.map((a) => el("option", { value: a.token }, a.name)));
+    acctSel.value = acctChoices.some((a) => a.token === d.account) ? d.account : "";
+    acctSel.addEventListener("change", () => setD("account", acctSel.value || null));
+  }
 
   const lines = p.instructions.split("\n").filter((l) => l.trim()).length;
   return {
@@ -208,6 +218,9 @@ function projectParts(p, drafts) {
     defaults: { title: "Defaults for new agents", card: true, summary: p.repos.length ? plural(p.repos.length, "repo") : "Not set", body: [el("div", { class: "proj-defaults" },
       pdRow(optSec("Repositories", el("span", { class: "dim small" }, "Offered first when you create an agent here."),
         repos.length ? el("div", { class: "row tight" }, ...repos) : el("span", { class: "muted small" }, "Add repositories in Settings, GitHub access first."))),
+      acctSel ? pdRow(optSec("GitHub account", el("div", { class: "stack tight" }, acctSel, el("span", { class: "dim small pretty" },
+        `For ${shared.join(", ") || "repositories"} that more than one account reaches. New agents here push and commit as the one you pick, `
+        + "where it has the repository ticked.")))) : "",
       pdRow(optSec("Lifecycle", seg([["", "Not set"], ["ephemeral", "Ephemeral"], ["persistent", "Persistent"], ["memory", "Ephemeral + memory"]], d.mode || "",
         (v) => setD("mode", v || null), "small wrap"))),
       pdRow(optSec("Stop after each task", seg([["", "Not set"], ["on", "On"], ["off", "Off"]], d.auto_stop === true ? "on" : d.auto_stop === false ? "off" : "",

@@ -1318,6 +1318,14 @@ pre.block.cols { columns: 2; }
 .list-row.joined { border-bottom: 0; }
 .input.bare { border: 0; background: transparent; padding: 4px 0; border-radius: 0; }
 .repo-list { display: flex; flex-direction: column; }
+/* Settings → GitHub access: the account switcher */
+.acct-pick { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 16px; border: 1px solid var(--line); border-radius: 14px;
+  background: var(--surface-soft); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+@media (hover: hover) { .acct-pick:hover { background: var(--surface); } }
+.acct-pick > .stack0 { min-width: 0; }
+.acct-avatar { width: 32px; height: 32px; border-radius: 50%; flex: none; display: flex; align-items: center; justify-content: center;
+  background: var(--surface-3); color: var(--fg); font-weight: 600; }
+.acct-menu .acct-avatar { width: 28px; height: 28px; }
 .repo-row { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 12px 16px; border: 0;
   border-top: 1px solid var(--line); background: none; color: inherit; text-align: left; cursor: pointer; width: 100%; font: inherit; }
 @media (hover: hover) { .repo-row:hover:not(:disabled) { background: var(--surface-soft); } }

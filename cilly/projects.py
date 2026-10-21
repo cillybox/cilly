@@ -106,7 +106,7 @@ def note_lines(text: str) -> list[str]:
 def _blank(pid: str, name: str) -> dict:
     return {"id": pid, "name": name, "created": _now(), "instructions": "", "allow": [], "repos": [],
             "defaults": {"mode": None, "auto_stop": None, "image": None, "model": None, "effort": None, "mcp": [], "plugins": [], "skills": [], "keep_outbox": None,
-                         "model_server": None, "skip_global": []},
+                         "model_server": None, "skip_global": [], "account": None},
             "research_agent": None, "research_auto": False, "route": None,
             "notes": [], "pending": [], "seen": [], "files": []}
 
@@ -135,6 +135,8 @@ def _checked(p: dict) -> dict | None:
         "mcp": [m for m in d.get("mcp") or [] if isinstance(m, str) and re.fullmatch(r"[\w.-]{1,64}", m)][:50],
         "plugins": [m for m in d.get("plugins") or [] if isinstance(m, str) and re.fullmatch(r"[\w.-]{1,64}", m)][:50],
         "skills": [m for m in d.get("skills") or [] if isinstance(m, str) and re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", m)][:50],
+        # the GitHub account (a token's name) for a repository more than one has ticked (the panel checks it)
+        "account": d.get("account") if isinstance(d.get("account"), str) and re.fullmatch(r"[^\x00-\x1f\x7f]{1,64}", d["account"]) else None,
         # sites of the global allowlist new agents here go without (the panel keeps only ones on it)
         "skip_global": [h for h in d.get("skip_global") or [] if _site_ok(h)][:1000],
         # a folder on this PC (the panel checks it again before each use)

@@ -1387,7 +1387,7 @@ class ServerTests(unittest.TestCase):
         self.assertIsNone(ag.meta["branch"])
         self.app.secrets.set_pasted("agent:claude:CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat-x")
         self.addCleanup(self.app.secrets.forget, "agent:claude:CLAUDE_CODE_OAUTH_TOKEN")
-        with mock.patch.object(self.app, "_secret", lambda *a: "ghp_x"), mock.patch.object(C, "token_for_repo", lambda cfg, r: "bot"):
+        with mock.patch.object(self.app, "_secret", lambda *a: "ghp_x"), mock.patch.object(C, "token_for_repo", lambda cfg, r, prefer=None: "bot"):
             p1 = self.app._task_payload(ag, "Fix the login timeout", new_branch=False, cont=False, pr_title="")
             p2 = self.app._task_payload(ag, "And the tests", new_branch=False, cont=True, pr_title="")
             p3 = self.app._task_payload(ag, "Fix the login timeout", new_branch=True, cont=False, pr_title="")
@@ -1398,7 +1398,7 @@ class ServerTests(unittest.TestCase):
         with open(ag.paths.branches_file, "w") as f:  # the egress proxy saw GitHub create it
             f.write('{"branch": "fix/login-timeout"}\nnot json\n{"branch": "../x"}\n')
         self.assertEqual(self.app.manager.branches(ag), {"fix/login-timeout"})
-        with mock.patch.object(self.app, "_secret", lambda *a: "ghp_x"), mock.patch.object(C, "token_for_repo", lambda cfg, r: "bot"):
+        with mock.patch.object(self.app, "_secret", lambda *a: "ghp_x"), mock.patch.object(C, "token_for_repo", lambda cfg, r, prefer=None: "bot"):
             self.assertFalse(self.app._task_payload(ag, "More", new_branch=False, cont=True, pr_title="")["branch_fresh"])
         self.assertTrue(self.app.manager.branch_ok(ag, "fix/other") and self.app.manager.branch_ok(ag, f"vmpanel/{ag.id}-2"))
         self.assertFalse(self.app.manager.branch_ok(ag, "main") or self.app.manager.branch_ok(ag, "release/1.0")
@@ -3415,12 +3415,13 @@ class ServerTests(unittest.TestCase):
             self.assertTrue(C.placeholder_identity(self.app.cfg()))  # only shown: Save settings keeps it
             st, _, b = self.req("POST", "/api/identity/lookup", {"save": True}, headers=a)
             self.assertTrue(json.loads(b)["saved"])
-            self.assertEqual((self.app.cfg()["identity"]["name"], self.app.cfg()["identity"]["email"]),
-                             ("cillybox", "123456789+cillybox@users.noreply.github.com"))
+            self.assertEqual(self.app.cfg()["tokens"]["bot"]["identity"],  # the token's own account
+                             {"name": "cillybox", "email": "123456789+cillybox@users.noreply.github.com"})
+            self.assertEqual(self.app.cfg()["identity"]["name"], old["identity"]["name"])
             reply = {"login": "someone-else", "id": 42}
             st, _, b = self.req("POST", "/api/identity/lookup", {"save": True}, headers=a)
             self.assertFalse(json.loads(b)["saved"])  # one you set is never replaced
-            self.assertEqual(self.app.cfg()["identity"]["name"], "cillybox")
+            self.assertEqual(C.account_identity(self.app.cfg(), "bot")["name"], "cillybox")
             for bad in ({"login": "bad name", "id": 1}, {"login": "x", "id": "1"}, {"login": "x", "id": 0}, ["x"]):
                 reply = bad
                 self.assertEqual(self.req("POST", "/api/identity/lookup", {}, headers=a)[0], 502, bad)

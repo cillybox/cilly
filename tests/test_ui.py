@@ -1651,6 +1651,34 @@ class UiTests(unittest.TestCase):
         self.assertEqual(got, ["", ["No repository (scratch folder)", "me/app", "omni/respawn"],
                                "", ["No repository (scratch folder)", "omni/respawn", "me/app"], "me/app"])
 
+    def test_new_agent_offers_an_account_only_for_a_shared_repository(self):
+        got = self.run_js("""
+          document.createElementNS = (ns, t) => new Node(t);
+          Node.prototype.querySelector = () => new Node("div");
+          const proj = { id: "p1", name: "Acme", repos: ["me/app"], pending: [], defaults: { mcp: [], account: "work" } };
+          STATE = { agents_list: [], projects: [proj], repos: ["me/app", "me/solo"], speech: { enabled: false }, mcp_servers: {}, presets: {},
+            images: [], vm_defaults: {}, setup: { steps: [], claude: "pasted" }, tools: { qemu: 1, "qemu-img": 1, kvm: 1, bwrap: 1 },
+            accounts: [{ token: "bot", name: "cillybox", repos: ["me/app", "me/solo"] }, { token: "work", name: "acme-agent", repos: ["me/app"] }] };
+          Object.defineProperty(globalThis, "navigator", { value: { platform: "Linux" }, configurable: true });
+          VIEWS.new.mount(new Node("main"));
+          const P = VIEWS.new.p, opts = () => P.account.kids.map((k) => k.textContent);
+          const out = [];
+          NEW.repo = "me/solo"; VIEWS.new.update(true);
+          out.push(!!P.accountRow.hidden);  // one account has it
+          NEW.repo = "me/app"; VIEWS.new.update(true);
+          out.push(!!P.accountRow.hidden, opts(), P.account.value);
+          NEW.project = "p1"; VIEWS.new.update(true);  // the project's account
+          out.push(P.account.value);
+          let body = null;
+          api = async (m, path, b) => { body = b; return { id: "abcd1234" }; };
+          loadState = async () => {}; go = () => {};
+          P.inject = { get: async () => null, clear() {} };
+          await create();
+          out.push(body.account, body.repo);
+          console.log(JSON.stringify(out));
+        """)
+        self.assertEqual(got, [True, False, ["cillybox (default)", "acme-agent"], "bot", "work", "work", "me/app"])
+
     def test_secrets_list_order_and_names(self):
         got = self.run_js("""
           const st = { "token:bot": "pasted", "panel_token": "missing", "mcp:PIXELLAB_API_KEY": "missing",
@@ -2497,8 +2525,8 @@ class UiTests(unittest.TestCase):
           const P = VIEWS.settings.p = { phone: false, dirtyTabs: new Set(), saveNote: { hidden: true }, github: { chosen: { bot: new Set(["me/a"]) } },
             network: { allow: field("a.io"), never: [], routes: { routes: {}, route: "", own: false, doh: "", keep: true, pushOwn: true } },
             cpus: field("4"), mem: field("4096"), maxc: field("8"), maxm: field("16384"), idle: field("30"), yolo: field("3"), yoloAll: field(""),
-            spOn: field(""), spUrl: field(""), spMax: field("120"), json: field("{}"), branches: { mode: "kind", prefix: field("cilly/") },
-            ident: { name: field("agent-bot"), email: field("00000000+agent-bot@users.noreply.github.com") } };
+            spOn: field(""), spUrl: field(""), spMax: field("120"), json: field("{}"), branches: { mode: "kind", prefix: field("cilly/") } };
+          P.github.idents = { bot: { name: "agent-bot", email: "00000000+agent-bot@users.noreply.github.com" } };
           P.base = VIEWS.settings.signatures();
           VIEWS.settings.markDirty();
           const clean = [[...P.dirtyTabs], P.saveNote.hidden];
@@ -2511,11 +2539,33 @@ class UiTests(unittest.TestCase):
           P.branches.mode = "id";  // branch names are on GitHub access too
           VIEWS.settings.markDirty();
           const branches = [...P.dirtyTabs];
-          P.branches.mode = "kind"; P.ident.email.value = "123+cillybox@users.noreply.github.com";  // and who agents commit as
+          P.branches.mode = "kind"; P.github.idents.bot = { name: "cillybox", email: "123+cillybox@users.noreply.github.com" };  // and who an account's agents commit as
           VIEWS.settings.markDirty();
           console.log(JSON.stringify([clean, edited, back, branches, [...P.dirtyTabs]]));
         """)
         self.assertEqual(got, [[[], True], [["github", "vm"], False], [[], True], ["github"], ["github"]])
+
+    def test_github_access_shows_one_account_at_a_time(self):
+        got = self.run_js("""
+          const work = { name: "acme-agent", email: "98765432+acme-agent@users.noreply.github.com" };
+          STATE = { repos: ["me/a", "me/b"], accounts: [
+            { token: "bot", name: "agent-bot", email: "00000000+agent-bot@users.noreply.github.com", repos: ["me/a", "me/b"], placeholder: true },
+            Object.assign({ token: "work", repos: ["me/a"], placeholder: false }, work)] };
+          const c = { identity: { name: "agent-bot", email: "00000000+agent-bot@users.noreply.github.com" },
+            tokens: { bot: { repos: ["me/a", "me/b"], secret: {} }, work: { repos: ["me/a"], secret: {}, identity: work } } };
+          const G = githubAccess(c);
+          const cards = G.node.kids.filter((k) => k.className === "card flush");
+          const out = [G.cur, cards.map((k) => !!k.hidden), G.node.kids[0].textContent, sharedRepos(G.chosen), G.idents.bot.name, G.idents.work.name];
+          G.chosen.work.delete("me/a");  // untick it: nothing is shared now
+          out.push(sharedRepos(G.chosen));
+          out.push([accountOf("me/a", "work").token, accountOf("me/b", "work").token, accountOf("me/a", null).token, accountOf("me/c", "work"),
+            accountsFor("me/a").map((a) => a.name)]);
+          console.log(JSON.stringify(out));
+        """)
+        self.assertEqual(got, ["bot", [False, True],
+                               "me/a is under agent-bot and acme-agent. Agents get agent-bot for it, unless their project or New agent picks another account.",
+                               {"me/a": ["bot", "work"]}, "agent-bot", "acme-agent", {},
+                               ["work", "bot", "bot", None, ["agent-bot", "acme-agent"]]])
 
     def test_branch_names_in_settings(self):
         got = self.run_js("""

@@ -328,6 +328,7 @@ function sandboxPop(a) {
     row("Network", isResearch(a) ? "Open web" : `${extraHosts(a).length} extra host${extraHosts(a).length === 1 ? "" : "s"}`),
     blocked.length ? row("Blocked", `${blocked.length} waiting`, "err-text") : "",
     row("Secrets", `${secretNames(a).length} exposed`),
+    a.repo && (STATE.accounts || []).length > 1 ? row("GitHub account", accountOf(a.repo, a.account)?.name || "none") : "",  // who it pushes and commits as
     row("Lifecycle", `${MODE_SHORT[a.mode]}, disk ${a.mode === "persistent" ? "kept" : "deleted"}`)];
   const head = el("div", { class: "row nowrap sum-head" }, el("span", { class: "grow title" }, "Sandbox"), el("span", { class: "muted small" }, policyLine(a)));
   if (!isPhone()) {

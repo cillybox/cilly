@@ -1176,7 +1176,9 @@ class Manager:
             self._drop_tls(a)
         boot = {
             "agent_id": a.id, "name": a.meta["name"], "mode": mode, "repo": a.meta.get("repo"),
-            "identity": {"name": cfg["identity"]["name"], "email": cfg["identity"]["email"]},
+            # its account's, for git's config (each task also says who its commits are by)
+            "identity": C.account_identity(cfg, C.token_for_repo(cfg, a.meta["repo"], a.meta.get("account")) if a.meta.get("repo")
+                                           else a.meta.get("account") or next(iter(cfg["tokens"]), None)),
             # the panel stops the VM after a task (see _on_guest), so the switch works on a running agent too.
             # Kept, and always false, for images whose runner would power off on its own.
             "auto_stop": False,

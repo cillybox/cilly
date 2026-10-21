@@ -37,7 +37,10 @@ os.environ.update({"XDG_CONFIG_HOME": f"{H}/cfg", "XDG_DATA_HOME": f"{H}/data", 
 os.makedirs(f"{H}/cfg/cilly")
 DEMO = "--demo" in sys.argv
 REPOS = ["lantern/website", "lantern/sync-server"] if DEMO else ["me/demo-repo", "me/plugin-lib", "me/sprites"]
-json.dump({"tokens": {"bot": {"repos": REPOS, "secret": {}}}, "vm": {"use_bwrap": "off"},
+json.dump({"tokens": {"bot": {"repos": REPOS, "secret": {}},  # a second bot account shares me/demo-repo, for Settings → GitHub access
+                      **({} if DEMO else {"work-bot": {"repos": ["me/demo-repo"], "secret": {},
+                                                       "identity": {"name": "acme-agent", "email": "98765432+acme-agent@users.noreply.github.com"}}})},
+           "vm": {"use_bwrap": "off"},
            "mcp_servers": {"pixellab": {"type": "http", "url": "https://api.pixellab.ai/mcp", "headers": {"Authorization": "Bearer ${PIXELLAB_API_KEY}"}}},
            "speech": {"whisper_url": "http://gpu-box.local:8080"}, "research_base_image": "base-20261012-100000.qcow2",
            **({"remote_hosts": ["cilly.home"]} if DEMO else {"plugins": {"impeccable": {"marketplace": "pbakaus/impeccable"},
@@ -116,7 +119,7 @@ if True:  # the repo pickers (setup, Settings → GitHub access), without GitHub
         {"full_name": "me/plugin-lib", "private": True, "language": "Java", "pushed_at": "2026-10-12T05:00:00Z", "permissions": {"admin": False, "push": True, "pull": True}},
         {"full_name": "me/website", "private": False, "language": "TypeScript", "pushed_at": "2026-10-01T05:00:00Z", "permissions": {"admin": True, "push": True, "pull": True}},
     ]).start()
-for k, v in () if "--fresh" in sys.argv else (("token:bot", "ghp_x"), ("agent:claude:CLAUDE_CODE_OAUTH_TOKEN", "sk-oat"), ("research:CLAUDE_CODE_OAUTH_TOKEN", "sk-oat-r"),
+for k, v in () if "--fresh" in sys.argv else (("token:bot", "ghp_x"), ("token:work-bot", "ghp_w"), ("agent:claude:CLAUDE_CODE_OAUTH_TOKEN", "sk-oat"), ("research:CLAUDE_CODE_OAUTH_TOKEN", "sk-oat-r"),
                                                      *((("model-ssh:rented", "b3BlbnNzaC1rZXktdjEAAAAA"),) if not DEMO else ())):
     app.secrets.set_pasted(k, v)
 httpd.RequestHandlerClass = make_handler(app)

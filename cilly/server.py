@@ -839,6 +839,9 @@ class App:
                                  **agent_limits(a)) for a in self.manager.list()],
             "projects": [self._project_public(p) for p in self.projects.list()],
             "repos": C.repos(cfg),
+            # each token is a bot account: who its agents commit as, and its repositories (the first is the default)
+            "accounts": [dict(C.account_identity(cfg, n), token=n, repos=list(t.get("repos", [])),
+                              placeholder=C.placeholder_identity(cfg, n)) for n, t in cfg["tokens"].items()],
             "agents": {k: {"label": v.get("label", k)} for k, v in cfg["agents"].items()},
             "vm_defaults": {k: cfg["vm"][k] for k in ("cpus", "memory_mb", "max_cpus", "max_memory_mb", "task_timeout_minutes")},
             "attachments": dict(cfg["attachments"]),  # the message box checks a file's size before it reads it
@@ -1453,7 +1456,7 @@ class App:
             return self._research_payload(ag, a, instructions, cont)
         if not repo:
             return self._scratch_payload(ag, a, agent, instructions, cont)
-        tok_name = C.token_for_repo(cfg, repo)
+        tok_name = C.token_for_repo(cfg, repo, ag.meta.get("account"))
         if not tok_name:
             raise ApiError(f"no token is configured for {repo}")
         env = {}
@@ -1480,7 +1483,7 @@ class App:
             "branch_fresh": not C.is_id_branch(branch, ag.id) and branch not in self.manager.branches(ag),
             "branch_rename": C.branch_pattern(cfg),
             "agent_argv": a["argv"], "continue_args": a.get("continue_args", []),
-            "agent_env": a.get("env", {}), "env": env,
+            "agent_env": dict(a.get("env", {}), **_git_identity_env(C.account_identity(cfg, tok_name))), "env": env,
             "permission_mode": cfg["claude_policy"]["permission_mode"],
             "pr_title": pr_title[:200],
             "commit_exclude": cfg.get("leftover_commit_exclude", []),
@@ -1602,6 +1605,9 @@ class App:
             raise ApiError("research agents can't receive injected folders (they have open web access)")
         if repo is not None and repo not in C.repos(cfg):
             raise ApiError("repo is not configured for any token")
+        account = body.get("account") or None  # which account, when more than one has the repository ticked
+        if account is not None and (repo is None or account not in C.tokens_for_repo(cfg, repo)):
+            raise ApiError(f"that account doesn't have {repo or 'a repository'} ticked in Settings")
         if agent not in cfg["agents"]:
             raise ApiError("unknown agent")
         try:
@@ -1645,7 +1651,9 @@ class App:
             plugins = [n for n in (project or {}).get("defaults", {}).get("plugins", []) if n in cfg.get("plugins", {})]
         if skills is None:
             skills = [n for n in (project or {}).get("defaults", {}).get("skills", []) if n in self.skills.list()]
-        ag.set(egress_skip=skip)
+        if account is None and repo and (project or {}).get("defaults", {}).get("account") in C.tokens_for_repo(cfg, repo):
+            account = project["defaults"]["account"]  # the project's, while it reaches the repository
+        ag.set(egress_skip=skip, account=account)
         ag.set(mcp=sorted(set(mcp)), image=image, route=route, keep_outbox=keep,
                plugins=sorted(set(plugins)) if profile == "coding" else [], skills=sorted(set(skills)) if profile == "coding" else [])
         if project:
@@ -2014,7 +2022,7 @@ class App:
         self._attachable.clear()  # it won't be empty for long
         if not ag.running or ag.meta.get("state") not in ("ready", "busy"):
             raise ApiError("Start the agent first. The scratch files are inside its VM.")
-        tok_name = C.token_for_repo(cfg, repo)
+        tok_name = C.token_for_repo(cfg, repo, ag.meta.get("account"))
         tok = self._secret(f"token:{tok_name}", cfg["tokens"][tok_name].get("secret", {}),
                            f"the GitHub token for {repo}")
         branch = self.manager.next_branch(ag.id, str(body.get("pr_title") or "") or ag.meta["name"])
@@ -2030,6 +2038,7 @@ class App:
         payload = {
             "attach": True, "repo": repo, "branch": branch, "instructions": f"Attach {repo}",
             "summary": f"Attach repository {repo}", "env": env,
+            "agent_env": _git_identity_env(C.account_identity(cfg, tok_name)),
             "pr_title": str(body.get("pr_title") or "")[:200],
             "commit_exclude": cfg.get("leftover_commit_exclude", []),
         }
@@ -2938,6 +2947,10 @@ class App:
                 out["skills"] = [n for n in d["skills"] if n in lib] if isinstance(d["skills"], list) else []
             if "skip_global" in d:
                 out["skip_global"] = self._global_skip(d["skip_global"])
+            if "account" in d:  # for a repository more than one account has ticked
+                if d["account"] and d["account"] not in cfg["tokens"]:
+                    raise ApiError("unknown account")
+                out["account"] = d["account"] or None
             if "keep_outbox" in d:
                 from . import exports as X
                 try:
@@ -3691,7 +3704,7 @@ class App:
             return {"repos": list(pool.map(check, repos))}
 
     def api_identity_lookup(self, body) -> dict:
-        """Settings, GitHub access: the bot's handle and noreply address, from its token (GitHub's /user),
+        """Settings, GitHub access: the account's handle and noreply address, from its token (GitHub's /user),
         for its agents' commits.  With "save" it's saved at once, but only over the placeholder, so the
         setup wizard never replaces one you set."""
         cfg = self.cfg()
@@ -3699,21 +3712,37 @@ class App:
         if name not in cfg["tokens"]:
             raise ApiError("Add the bot's GitHub token first.")
         tok = self._secret(f"token:{name}", cfg["tokens"][name].get("secret", {}), f"the GitHub token “{name}”")
-        try:
-            me = GH.api_get("/user", tok)
-        except GH.GitHubError as e:
-            raise ApiError(_verify_reason(str(e)), 502) from None
-        login, uid = (me.get("login"), me.get("id")) if isinstance(me, dict) else (None, None)
-        if not isinstance(login, str) or not re.fullmatch(r"[A-Za-z0-9-]{1,39}", login) or type(uid) is not int or uid <= 0:
-            raise ApiError("GitHub sent an unexpected reply.", 502)
-        ident = {"name": login, "email": f"{uid}+{login}@users.noreply.github.com"}
+        ident = _github_identity(tok)
         saved = False
-        if body.get("save") is True and C.placeholder_identity(cfg):
+        if body.get("save") is True and C.placeholder_identity(cfg, name):
             new = json.loads(json.dumps(cfg))
-            new["identity"].update(ident)
+            new["tokens"][name]["identity"] = ident
             self.set_cfg(new)
             saved = True
         return dict(ident, saved=saved)
+
+    def api_account_add(self, body) -> dict:
+        """Add account: a bot account's token, named after the account GitHub says it belongs to, with
+        that account's name and noreply address for its agents' commits.  It starts with no
+        repositories ticked.  The token is kept like any pasted secret."""
+        value = str(body.get("token") or "").strip()
+        if not value:
+            raise ApiError("Paste the bot account's token.")
+        ident = _github_identity(value)
+        cfg = self.cfg()
+        name = ident["name"]
+        same = next((n for n in cfg["tokens"] if n == name or C.account_identity(cfg, n)["name"] == name), None)
+        if same or not C.TOKEN_NAME.fullmatch(name):
+            raise ApiError(f"{name} is added already" + (f", as the token {same}" if same and same != name else "")
+                           + ". Paste its new token under Secrets instead.")
+        new = json.loads(json.dumps(cfg))
+        new["tokens"][name] = {"description": f"GitHub account {name}", "repos": [], "secret": {}, "identity": ident}
+        try:
+            self.set_cfg(new)
+        except (ValueError, KeyError, TypeError) as e:
+            raise ApiError(str(e)) from None
+        saved = self.api_secret_put({"key": f"token:{name}", "value": value, "remember": body.get("remember") is True})
+        return {"token": name, **ident, "note": saved["note"]}
 
     def api_token_verify(self, body) -> dict:
         cfg = self.cfg()
@@ -3735,6 +3764,25 @@ class App:
             results.append(dict(r, full_name=repo, ok=push, reason="" if push else
                                 "No push access. The bot needs write access to push branches and open pull requests."))
         return {"name": name, "repos": results}
+
+
+def _github_identity(tok: str) -> dict:
+    """The account a token belongs to, as GitHub's /user says, and its noreply address."""
+    try:
+        me = GH.api_get("/user", tok)
+    except GH.GitHubError as e:
+        raise ApiError(_verify_reason(str(e)), 502) from None
+    login, uid = (me.get("login"), me.get("id")) if isinstance(me, dict) else (None, None)
+    if not isinstance(login, str) or not re.fullmatch(r"[A-Za-z0-9-]{1,39}", login) or type(uid) is not int or uid <= 0:
+        raise ApiError("GitHub sent an unexpected reply.", 502)
+    return {"name": login, "email": f"{uid}+{login}@users.noreply.github.com"}
+
+
+def _git_identity_env(ident: dict) -> dict:
+    """Who an agent's commits are by, for each task: its account's name and noreply address.  Git takes
+    these over the name in the VM's git config, which is set when it starts."""
+    return {"GIT_AUTHOR_NAME": ident["name"], "GIT_AUTHOR_EMAIL": ident["email"],
+            "GIT_COMMITTER_NAME": ident["name"], "GIT_COMMITTER_EMAIL": ident["email"]}
 
 
 def _attach_fit(push: bool, commits) -> tuple[bool, str]:
@@ -4192,6 +4240,8 @@ def make_handler(app: App):
                     res = app.api_fetch_build(self._body())
                 elif method == "POST" and p == "/api/identity/lookup":
                     res = app.api_identity_lookup(self._body())
+                elif method == "POST" and p == "/api/accounts":
+                    res = app.api_account_add(self._body())
                 elif method == "GET" and p == "/api/settings":
                     res = app.api_settings_get(q)
                 elif method == "PUT" and p == "/api/settings":
