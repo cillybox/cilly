@@ -3089,6 +3089,8 @@ class ServerTests(unittest.TestCase):
         self.assertNotIn("ANTHROPIC_API_KEY", p["env"])
         self.assertNotIn("sk-local-123", json.dumps({k: v for k, v in p.items() if k != "proxy_models"}))  # to the agent's proxy only
         self.assertEqual((p.get("model"), p.get("effort"), p["local_model"]), (None, "max", "gpu/qwen3-coder:30b"))  # --effort
+        self.assertEqual(p["agent_argv"][-1], "--disallowedTools=WebSearch")  # Anthropic's own search: a model server refuses it
+        self.assertNotIn("--disallowedTools=WebSearch", C.ARGV_CLAUDE)  # the config's list is left alone
         model = lambda body: (self.req("POST", f"/api/agents/{ag.id}/model", body, headers=self.auth())[0], ag.meta.get("effort"))  # noqa: E731
         self.assertEqual(model({"model": "qwen3:8b", "server": "gpu"}), (200, "max"))  # another of yours: kept
         self.assertEqual(model({"effort": "medium"}), (200, "medium"))  # on its own, as for Claude's
@@ -3124,6 +3126,7 @@ class ServerTests(unittest.TestCase):
         p = self.app._task_payload(ag, "hi", new_branch=False, cont=False, pr_title="")
         self.assertNotIn("ANTHROPIC_BASE_URL", p["agent_env"])
         self.assertEqual((p["model"], p["proxy_models"]), ("sonnet", {}))
+        self.assertNotIn("--disallowedTools=WebSearch", p["agent_argv"])  # Claude's models have it
         # the model list, also for a paired phone's picker, and the test from Settings
         got = json.loads(self.req("GET", "/api/models", headers=self.auth())[2])
         self.assertEqual(got["servers"]["gpu"], {"models": ["gpt-oss:20b", "qwen3-coder:30b"], "error": None,

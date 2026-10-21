@@ -1246,6 +1246,9 @@ class App:
                 payload["agent_env"].update(CLAUDE_CODE_MAX_CONTEXT_TOKENS=str(ctx),
                                             CLAUDE_CODE_MAX_OUTPUT_TOKENS=str(min(32000, max(4096, ctx // 4))))
             payload["local_model"] = f"{local['name']}/{m}"
+            if os.path.basename(str(payload["agent_argv"][0])) == "claude":  # with = so it takes nothing after it
+                # WebSearch runs on Anthropic's servers, and a model server refuses any request that offers it
+                payload["agent_argv"] = [*payload["agent_argv"], "--disallowedTools=WebSearch"]
             if ag.meta.get("effort") in C.EFFORTS:
                 payload["effort"] = ag.meta["effort"]  # Claude Code sends high unless told, and some templates refuse it
             return payload
