@@ -448,6 +448,11 @@ while True:
                 {"k": "sub", "id": "ag1", "state": "completed", "tools": 2, "tokens": 18200, "ms": 7000,
                  "summary": "Recipes are registered in **A.java** via `RecipeManager`."},
                 {"k": "sub", "id": "b1", "state": "stopped"}])
+        if "leave a server running" in msg["instructions"]:  # the turn ends while a background command runs on
+            working(msg["id"], 1)
+            send(type="chat", task=msg["id"], events=[{"k": "text", "text": "The server is up. Enter the code, then tell me."}])
+            send(type="turn_over", task=msg["id"], background=1)
+            working(msg["id"], float(os.environ.get("FAKE_SERVER_SECS", "4")))  # takes messages meanwhile
         send(type="chat", task=msg["id"], events=[
             {"k": "text", "text": "Looking at the build."},
             {"k": "tool", "id": "t1", "tool": "Bash", "verb": "Ran", "target": "./gradlew build"},

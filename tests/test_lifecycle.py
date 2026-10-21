@@ -969,6 +969,21 @@ class LifecycleTests(unittest.TestCase):
                              for e in self.mgr.read_chat(a.id)["events"]))  # the subagent wasn't stopped
         self.assertNotIn("not-a-task", str(a.meta["tasks"]))
 
+    def test_a_queued_message_goes_in_when_the_turn_leaves_background_work_running(self):
+        a = self.make("persistent")
+        self.start(a)
+        self.wait(lambda: a.meta["state"] == "ready", "ready")
+        run = self.mgr.new_task(a.id, self.task("leave a server running", branch=a.meta["branch"]))
+        self.wait(lambda: a.meta["tasks"][-1].get("live"), "the run to take messages")
+        done = self.mgr.new_task(a.id, self.task("Done", branch=a.meta["branch"]), queue=True)
+        self.wait(lambda: next(t for t in a.meta["tasks"] if t["id"] == done["id"])["state"] == "delivered", "the queued one to go in")
+        rec = next(t for t in a.meta["tasks"] if t["id"] == done["id"])
+        self.assertEqual(rec["into"], run["id"])
+        self.assertEqual(next(t for t in a.meta["tasks"] if t["id"] == run["id"])["state"], "running")  # nothing stopped
+        self.wait(lambda: "Got it: Done" in str(self.mgr.read_chat(a.id)["events"]), "the answer")
+        self.wait(lambda: next(t for t in a.meta["tasks"] if t["id"] == run["id"])["state"] == "done", "the run to end", timeout=20)
+        self.assertNotIn("head='Done'", self.log(a))  # never a task of its own
+
     def test_a_refused_message_shows_in_the_chat(self):
         a = self.make("persistent")
         self.start(a)

@@ -9,7 +9,8 @@ no --input-format.  FAKE_CLAUDE_CAPS: system/init capabilities, comma separated.
 FAKE_CLAUDE_TURN: seconds the first turn works.  FAKE_CLAUDE_SILENT=1: no lifecycle frames.
 FAKE_CLAUDE_HANG=1: the first turn never ends.  FAKE_CLAUDE_WAITING: queued turns the first result
 reports though none come (so only the session going idle says it's over).  FAKE_CLAUDE_REFUSE=1: every
-message after the prompt is refused.  The session says when it goes idle only with
+message after the prompt is refused.  FAKE_CLAUDE_BG_SECS: seconds after the first turn's result that
+the background command bg1 is reported done (by default it is before that result).  The session says when it goes idle only with
 CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS set, as Claude Code does, and then also once before its first turn."""
 import json
 import os
@@ -135,12 +136,21 @@ while hang or time.time() < end:
             now = now or hit
     if now:  # the turn takes the message in: background work goes on
         break
+bg_secs = float(os.environ.get("FAKE_CLAUDE_BG_SECS", "0"))
+bg_done = None
+if not bg_secs:
+    out(type="system", subtype="task_notification", task_id="bg1", tool_use_id="toolu_bg1", status="completed", session_id=SID)
+else:
+    bg_done = time.time() + bg_secs
 result(len(waiting) or int(os.environ.get("FAKE_CLAUDE_WAITING", "0")))
 if waiting:
     answer(waiting)
 idle()
 while True:
-    got = lines(3600)
+    got = lines(max(0.05, bg_done - time.time()) if bg_done else 3600)
+    if bg_done and time.time() >= bg_done:
+        bg_done = None
+        out(type="system", subtype="task_notification", task_id="bg1", tool_use_id="toolu_bg1", status="completed", session_id=SID)
     if got is None:
         break
     for m in got:

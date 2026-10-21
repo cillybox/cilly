@@ -1074,16 +1074,23 @@ class LiveInput:
     works (Send now).  Once Claude Code has queued such a message, its own send-now request for it
     follows, which ends no background agent or command.  Messages are only taken when system/init offers what this needs.
     Stdin closes, which ends the run as before, once a turn is over (its result, or the session going
-    idle once background agents are done) and every message sent has been answered.  If Claude Code
-    never says a message was answered, stdin still closes after QUIET seconds without output: once
-    the turn is over, or at any time while it never said it got the message."""
+    idle once background agents are done), every message sent has been answered, and no background
+    command or agent it started still runs.  While one does, the session still takes your messages, and
+    the panel is told the turn is over, so a queued message goes in too.  It waits for them at most
+    bg_ceiling seconds (the agent's background work limit), and otherwise until the task's time limit.
+    If Claude Code never says a message was answered, stdin still closes after QUIET seconds without
+    output: once the turn is over, or at any time while it never said it got the message."""
 
     NEEDS = ("interrupt_send_now_v1", "msg_lifecycle_v1")
     SETTLED = ("completed", "cancelled", "discarded", "refused")
     QUIET = 300
 
-    def __init__(self, ctl, task_id: str, prompt: str):
+    def __init__(self, ctl, task_id: str, prompt: str, bg_ceiling: float | None = None):
         self.ctl, self.task = ctl, task_id
+        self.bg: set = set()   # background commands and agents still running: started, and not yet reported done
+        self.bg_ceiling = bg_ceiling
+        self.over_at = 0.0     # when the last turn was over
+        self.told = False      # the panel knows this turn is over with background work running
         self.lock = threading.Lock()
         self.lines: queue.Queue = queue.Queue()
         self.lines.put(user_line(prompt))
@@ -1119,6 +1126,9 @@ class LiveInput:
             with self.lock:
                 if (self.over and self.open or self.open & self.unsent) and time.time() - self.heard >= self.QUIET:
                     log(f"Claude Code said nothing for {self.QUIET}s with a message unanswered; ending its input")
+                    self.close()
+                elif self.over and self.bg and self.bg_ceiling and time.time() - self.over_at >= self.bg_ceiling:
+                    log(f"background work ran past its limit of {round(self.bg_ceiling)}s after the turn; ending the input")
                     self.close()
 
     def close(self) -> None:
@@ -1162,18 +1172,36 @@ class LiveInput:
             elif typ == "control_response":  # Claude Code's answer to a send-now request, for the log
                 log("| send-now: " + json.dumps(msg.get("response"))[:300])
                 return
+            elif typ == "system" and sub in ("task_started", "task_notification"):  # a subagent or background command
+                tid = msg.get("task_id") or msg.get("tool_use_id")
+                if not isinstance(tid, str) or not tid:
+                    return
+                if sub == "task_started":
+                    self.bg.add(tid[:64])
+                    return
+                self.bg.discard(tid[:64])
             elif typ == "system" and sub == "session_state_changed" and msg.get("state") == "idle":
                 if not self.ran:
                     return  # it may say idle before its first turn, which is no turn's end
+                if not self.over:
+                    self.over_at = time.time()
                 self.over = True
             elif typ == "result":
                 waiting = msg.get("queued_turn_count")
                 self.over = not (isinstance(waiting, int) and waiting > 0)
                 self.ran = True
+                if self.over:
+                    self.over_at = time.time()
             else:
                 return
-            if not self.live or (self.over and not self.open):
+            if not self.live or (self.over and not self.open and not self.bg):
                 self.close()
+            elif self.over and not self.open and self.bg and not self.told:
+                self.told = True  # once per turn: the session waits for its background work, and takes messages
+                n = len(self.bg)
+                self.ctl.send(type="turn_over", task=self.task, background=n)
+                self.ctl.send(type="chat", task=self.task, events=[{"k": "status", "text": (
+                    f"{n} background {'job' if n == 1 else 'jobs'} still running. A message you send goes into this conversation.")}])
 
     def deliver(self, text: str, mid: str) -> str:
         """Your message into the running session, and Claude Code's send-now request for it."""
@@ -1185,6 +1213,7 @@ class LiveInput:
             uid = str(uuid.uuid4())
             self.open.add(uid)
             self.over = False
+            self.told = False
             self.unsent.add(uid)
             self.ids[uid] = mid
             self.lines.put(user_line(text, uid))
@@ -2080,7 +2109,7 @@ def run_claude(task, ctl, env, cwd):
         env = dict(env, CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS="1")  # without it, no session_state_changed
 
     def run(args):
-        live = LiveInput(ctl, task["id"], prompt) if stream else None
+        live = LiveInput(ctl, task["id"], prompt, bg_ceiling(env)) if stream else None
         with TASK_RUN_LOCK:
             if TASK_RUN.get("id") == task["id"]:
                 TASK_RUN["live"] = live
@@ -2106,6 +2135,16 @@ def run_claude(task, ctl, env, cwd):
 
 
 STREAM_INPUT: dict = {}  # Claude Code's command -> whether it takes --input-format stream-json
+
+
+def bg_ceiling(env) -> float | None:
+    """The agent's background work limit in seconds, which Claude Code gets as an environment variable,
+    or None when it has none (0 too: it waits for them until the task's time limit)."""
+    try:
+        ms = int(env.get("CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS") or 0)
+    except ValueError:
+        return None
+    return ms / 1000 if ms > 0 else None
 
 
 def streams_input(argv, env) -> bool:

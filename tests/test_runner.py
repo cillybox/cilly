@@ -1246,6 +1246,36 @@ class AgentSideTests(unittest.TestCase):
         self.assertLess(took, 10)
         self.assertTrue(os.path.exists(os.path.join(self.d, "eof")))
 
+    def test_background_work_keeps_the_session_open_for_your_messages(self):
+        # the turn is over, but its background command runs on: a message still goes into the session,
+        # and the run ends once that command is done
+        acks = []
+
+        def during(sent, ctl):
+            self._wait(lambda: any(m.get("type") == "turn_over" for m in sent), "the turn to be over")
+            self.r.deliver_message({"type": "deliver", "task": "t1", "id": "abcd1234", "text": "Done"},
+                                   mock.Mock(send=lambda **m: acks.append(m)))
+            self._wait(lambda: "got: Done" in str(sent), "the answer")
+        sent, rc, took = self._live(during, FAKE_CLAUDE_TURN="0.3", FAKE_CLAUDE_BG_SECS="3")
+        self.assertEqual(acks[0]["result"], "delivered")
+        self.assertEqual([m for m in sent if m.get("type") == "turn_over"],  # after each turn, the panel's cue for a queued message
+                         [{"type": "turn_over", "task": "t1", "background": 1}] * 2)
+        said = [e["text"] for m in sent if m.get("type") == "chat" for e in m["events"] if e["k"] == "status"]
+        self.assertIn("1 background job still running. A message you send goes into this conversation.", said)
+        self.assertEqual(rc, 0)
+        self.assertGreater(took, 2.5)  # it waited for the background command
+        self.assertLess(took, 15)
+        self.assertTrue(os.path.exists(os.path.join(self.d, "eof")))
+
+    def test_the_background_work_limit_ends_the_wait(self):
+        with mock.patch.object(self.r.LiveInput, "QUIET", 1):
+            sent, rc, took = self._live(FAKE_CLAUDE_TURN="0.3", FAKE_CLAUDE_BG_SECS="60", CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS="1500")
+        self.assertEqual(rc, 0)
+        self.assertLess(took, 10)  # not the background command's 60 seconds
+        self.assertTrue(os.path.exists(os.path.join(self.d, "eof")))
+        self.assertEqual((self.r.bg_ceiling({"CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS": "0"}), self.r.bg_ceiling({}),
+                          self.r.bg_ceiling({"CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS": "x"})), (None, None, None))
+
     def test_the_task_timeout_still_ends_a_live_run(self):
         sent, rc, took = self._live(timeout_s=2, FAKE_CLAUDE_HANG="1")
         self.assertNotEqual(rc, 0)

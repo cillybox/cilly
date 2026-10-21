@@ -1622,6 +1622,9 @@ class Manager:
                 if rec is not None and a.can_deliver and not rec.get("live"):  # a VM repeating it writes nothing
                     rec["live"] = True
                     a.save_meta()
+        elif typ == "turn_over":  # the turn is over, but background work runs on and its session still takes messages
+            if isinstance(msg.get("task"), str):
+                threading.Thread(target=self._deliver_queued, args=(a, msg["task"]), daemon=True).start()
         elif typ == "deliver_ack":
             mid = str(msg.get("id", ""))
             with a.lock:  # Send now gives up waiting under the lock, so the answer counts only before that
@@ -1832,6 +1835,18 @@ class Manager:
         if w["result"] == "idle":
             raise VMError("Nothing is running right now.")
         return w["result"]
+
+    def _deliver_queued(self, a: Agent, tid: str) -> None:
+        """After a turn that left a background command or agent running, the first queued message goes
+        into that session, as Send now would, when it can go there.  Nothing is ever stopped for it."""
+        live = a.live_run()
+        with a.lock:
+            nxt = a.queue[0]["id"] if live and live["id"] == tid and a.queue else None
+        if nxt:
+            try:
+                self.send_now(a.id, nxt, deliver_only=True)
+            except VMError:
+                pass
 
     def send_now(self, aid: str, tid: str, deliver_only: bool = False) -> str:
         """A queued message goes first.  While a task runs, it goes into that run when the runner and
