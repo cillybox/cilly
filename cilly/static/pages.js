@@ -3,7 +3,7 @@
 
 // ---- New agent ----
 const NEW = { model: null, profile: "coding", mode: "ephemeral", autostop: true, repo: null, name: "", text: "", attach: [], prTitle: "", cpus: null, mem: null, mcp: new Set(), image: "", route: "",
-  keep: false, keepDest: "", plugins: new Set(), skills: new Set(), project: null, applied: null, skip: [], account: null };
+  keep: false, keepDest: "", plugins: new Set(), skills: new Set(), project: null, applied: null, skip: [], account: null, disk: null };
 // Picking a project fills in its defaults; you can still change each of them.
 function applyProjectDefaults(p) {
   const d = p.defaults, research = NEW.profile === "research";
@@ -17,6 +17,7 @@ function applyProjectDefaults(p) {
   NEW.model = d.model ? { model: d.model, server: d.model_server || undefined } : null;
   NEW.skip = [...(d.skip_global || [])];
   NEW.account = d.account || null;
+  NEW.disk = d.disk_gb || null;
   NEW.applied = p.id;
 }
 VIEWS.new = {
@@ -65,6 +66,8 @@ VIEWS.new = {
     // the options: every field, in one card (no fold-out)
     P.cpus = el("input", { class: "input", type: "number", min: 1, "aria-label": "vCPUs" });
     P.mem = el("input", { class: "input", type: "number", min: 512, step: 256, "aria-label": "Memory (MiB)" });
+    P.disk = el("input", { class: "input", type: "number", min: 20, step: 10, "aria-label": "Disk (GB)" });
+    P.disk.addEventListener("input", () => { NEW.disk = +P.disk.value || null; });
     P.pr = el("input", { class: "input", maxlength: 200, placeholder: "Optional. The agent picks one otherwise.", value: NEW.prTitle, "aria-label": "PR title" });
     P.pr.addEventListener("input", () => { NEW.prTitle = P.pr.value; });
     P.auto = sw(NEW.autostop, (on, b) => { NEW.autostop = on; setSw(b, on); });
@@ -96,7 +99,8 @@ VIEWS.new = {
     P.options = el("div", { class: "card flush new-options" }, phone ? "" : el("div", { class: "opt-head" }, "Virtual machine"),
       opt("Resources", "", el("div", { class: "row nowrap opt-pair" },
         el("label", { class: "field grow" }, el("span", { class: "label" }, "vCPUs"), P.cpus),
-        el("label", { class: "field grow" }, el("span", { class: "label" }, "Memory (MiB)"), P.mem))),
+        el("label", { class: "field grow" }, el("span", { class: "label" }, "Memory (MiB)"), P.mem),
+        el("label", { class: "field grow" }, el("span", { class: "label" }, "Disk (GB)"), P.disk))),
       P.modelOpt = opt("Model", "Claude's, or one from your model servers", P.modelBox), opt("VM image", "Which toolchains it has", P.imageBox), opt("Route", "How its traffic leaves", P.routeBox),
       P.extras = el("details", { class: "adv opt-sec new-adv" }, el("summary", {}, "Tools and files", P.extrasCount = el("span", { class: "dim" })),
         opt("MCP servers", "", P.mcp), P.pluginsOpt = opt("Plugins", "Installed in its VM before its first task", P.plugins),
@@ -177,6 +181,8 @@ VIEWS.new = {
     if (!P.cpus.value) P.cpus.value = STATE.vm_defaults.cpus;
     if (!P.mem.value) P.mem.value = STATE.vm_defaults.memory_mb;
     P.cpus.max = STATE.vm_defaults.max_cpus; P.mem.max = STATE.vm_defaults.max_memory_mb;
+    if (changed("newDisk", [NEW.disk, NEW.applied]) || !P.disk.value) P.disk.value = NEW.disk || STATE.vm_defaults.disk_gb || 20;
+    P.disk.max = STATE.vm_defaults.max_disk_gb || 200;
     (P.repoRow || P.repo).hidden = research; P.researchNote.hidden = !research; P.injectBox.hidden = research || !isOwner(); P.autoRow.hidden = research;
     P.stopCard.hidden = P.autoRow.hidden && P.keepBox.hidden;
     P.extrasCount.textContent = [NEW.mcp.size + NEW.plugins.size + NEW.skills.size].map((n) => (n ? ` ${n} on` : ""))[0];
@@ -276,7 +282,7 @@ async function create() {
       profile: NEW.profile, name: NEW.name.trim(), repo: research ? null : (NEW.repo || null), agent: "claude",
       // with files, the first message goes after it's made, through the message box's own path (uploads first)
       mode: NEW.mode, auto_stop: research ? false : NEW.autostop, instructions: files.length ? "" : text, pr_title: prTitle,
-      cpus: +P.cpus.value, memory_mb: +P.mem.value, inject, mcp: [...NEW.mcp], image: NEW.image || null,
+      cpus: +P.cpus.value, memory_mb: +P.mem.value, ...(P.disk?.value ? { disk_gb: +P.disk.value } : {}), inject, mcp: [...NEW.mcp], image: NEW.image || null,
       plugins: research ? [] : [...NEW.plugins].filter((n) => n in (STATE.plugins || {})),
       skip_global: research ? [] : NEW.skip.filter((h) => (STATE.setup?.allow || []).includes(h)),
       skills: research ? [] : [...NEW.skills].filter((n) => n in (STATE.skills || {})),
@@ -759,7 +765,7 @@ VIEWS.settings = {
     const P = VIEWS.settings.p, R = P.network.routes;
     return { github: JSON.stringify([Object.entries(P.github.chosen).map(([n, set]) => [n, [...set].sort()]), P.branches.mode, P.branches.prefix.value, P.github.idents]),
       network: JSON.stringify([P.network.allow.value, P.network.never, R.routes, R.route, R.own, R.doh, R.keep, R.pushOwn]),
-      vm: JSON.stringify([P.cpus.value, P.mem.value, P.maxc.value, P.maxm.value, P.idle.value, P.yolo.value, P.yoloAll.classList.contains("on")]),
+      vm: JSON.stringify([P.cpus.value, P.mem.value, P.maxc.value, P.maxm.value, P.disk?.value, P.maxd?.value, P.idle.value, P.yolo.value, P.yoloAll.classList.contains("on")]),
       speech: JSON.stringify([P.spOn.classList.contains("on"), P.spUrl.value, P.spMax.value]), advanced: P.json.value };
   },
   markDirty() {
@@ -845,6 +851,7 @@ VIEWS.settings = {
     const spOut = el("span", { class: "muted" });
     // vm
     P.cpus = num(c.vm.cpus, 1); P.mem = num(c.vm.memory_mb, 512, 256); P.maxc = num(c.vm.max_cpus, 1); P.maxm = num(c.vm.max_memory_mb, 512, 256);
+    P.disk = num(c.vm.disk_gb ?? 20, 20, 10); P.maxd = num(c.vm.max_disk_gb ?? 200, 20, 10);
     P.idle = el("select", { class: "input", "aria-label": "Stop when idle" }, IDLE_STOP.map(([v, label]) => el("option", { value: v }, label)));
     P.idle.value = String(c.vm.idle_stop_minutes);
     // YOLO: how many questions in a row an agent may send without you (null = no limit)
@@ -873,6 +880,9 @@ VIEWS.settings = {
         el("div", { class: "card flush" },
           setRow("Default vCPUs", "For a new agent", P.cpus), setRow("Max vCPUs", "The most an agent may ask for", P.maxc),
           setRow("Default memory (MiB)", "For a new agent", P.mem), setRow("Max memory (MiB)", "The most an agent may ask for", P.maxm),
+          setRow("Default disk (GB)", "For a new agent", P.disk, "A disk is a thin file: this PC only gives up the space an agent writes. "
+            + "A bigger disk needs a VM image built with this version of cilly."),
+          setRow("Max disk (GB)", "The most an agent may ask for", P.maxd),
           setRow("Stop when idle", "For persistent agents without their own setting", P.idle, "Stop when idle is for persistent agents that don't have their own setting. "
             + "Ephemeral, ephemeral + memory and research agents start with it off. Change it per agent in its ··· menu."),
           setRow("YOLO round limit", "Questions in a row an agent in YOLO mode may send without review. After that, new ones wait in the inbox until you message the agent.",
@@ -959,6 +969,7 @@ VIEWS.settings = {
     c.research_base_image = STATE.research_base_image || c.research_base_image;
     c.research.yolo_rounds = P.yoloAll.classList.contains("on") ? null : Math.max(1, Math.min(100, Math.round(+P.yolo.value || 3)));
     c.vm.cpus = +P.cpus.value; c.vm.memory_mb = +P.mem.value; c.vm.max_cpus = +P.maxc.value; c.vm.max_memory_mb = +P.maxm.value;
+    c.vm.disk_gb = +P.disk.value; c.vm.max_disk_gb = +P.maxd.value;
     c.vm.idle_stop_minutes = +P.idle.value;
     c.speech = Object.assign(c.speech || {}, { enabled: P.spOn.classList.contains("on"), whisper_url: P.spUrl.value.trim(), max_seconds: +P.spMax.value });
     for (const [name, chosen] of Object.entries(P.github.chosen)) if (c.tokens[name]) c.tokens[name].repos = [...chosen].sort();

@@ -1,8 +1,25 @@
 #!/bin/sh
-# Fake qemu-img: `create ... <path>` just creates an empty file, and `info` says a disk is 20 GiB.
-if [ "$1" = info ]; then
-  echo '{"virtual-size": 21474836480, "format": "qcow2"}'
-  exit 0
-fi
-for last; do :; done
-: > "$last"
+# Fake qemu-img.  `create ... <path> [<n>G]` creates an empty file, and remembers the size next to it.
+# `resize [-q] <path> <n>G` remembers a new size.  `info` says how big a disk is: what it remembers,
+# else 20 GiB.  With FAKE_QEMU_IMG_LOG set, each call is written there.
+[ -n "$FAKE_QEMU_IMG_LOG" ] && echo "$*" >> "$FAKE_QEMU_IMG_LOG"
+case "$1" in
+  info)
+    for last; do :; done
+    size=21474836480
+    [ -f "$last.size" ] && size=$(cat "$last.size")
+    echo "{\"virtual-size\": $size, \"format\": \"qcow2\"}"
+    exit 0;;
+  resize)
+    shift
+    [ "$1" = -q ] && shift
+    n=${2%G}
+    echo $((n * 1073741824)) > "$1.size"
+    exit 0;;
+esac
+prev=""; last=""
+for a; do prev=$last; last=$a; done
+case "$last" in
+  *[0-9]G) : > "$prev"; n=${last%G}; echo $((n * 1073741824)) > "$prev.size";;
+  *) : > "$last";;
+esac

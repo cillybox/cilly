@@ -348,7 +348,7 @@ echo "cilly: installing agent CLIs: {npm}"
 export HTTPS_PROXY={PROXY} https_proxy={PROXY}
 npm install -g --no-audit --no-fund {npm}
 echo "cilly: checking the image"
-for t in git python3 node npm gh {" ".join(bins)}; do
+for t in git python3 node npm gh growpart {" ".join(bins)}; do
   command -v "$t" >/dev/null || {{ echo "cilly: missing tool: $t"; exit 1; }}
 done
 for t in {" ".join(bins)}; do
@@ -439,8 +439,9 @@ echo CILLY-BUILD-OK
         },
         "package_update": True,
         "package_upgrade": True,
+        # cloud-guest-utils: growpart, so an agent's disk can be bigger than the image (the runner grows root at boot)
         "packages": ["git", "python3", "nodejs", "npm", "ca-certificates", "gh", "ripgrep",
-                     "build-essential", "curl", "jq"] + [p for t in toolchains for p in RECIPES[t]["apt"]],
+                     "build-essential", "curl", "jq", "cloud-guest-utils"] + [p for t in toolchains for p in RECIPES[t]["apt"]],
         "write_files": [
             {"path": "/usr/local/sbin/cilly-runner", "encoding": "b64", "content": runner,
              "permissions": "0755", "owner": "root:root"},

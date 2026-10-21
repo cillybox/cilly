@@ -105,7 +105,14 @@ DASH_CHECK = {"matcher": "Edit|MultiEdit|Write", "hooks": [{"type": "command", "
 _ARGV_CLAUDE_V1 = ["claude", "-p", "{instructions}", "--permission-mode", "{permission_mode}"]
 ARGV_CLAUDE = _ARGV_CLAUDE_V1 + ["--output-format", "stream-json", "--verbose"]
 
-IDLE_STOP_CHOICES = (0, 15, 30, 60, 120)  # Stop When Idle, in minutes (0 = off)
+IDLE_STOP_CHOICES = (0, 15, 30, 60, 120)
+DISK_MIN_GB, DISK_MAX_GB = 20, 4096  # an agent's disk: no smaller than the images are built, and a sane top
+
+
+def disk_gb(meta: dict, cfg: dict) -> int:
+    """How big an agent's disk is, in GB: its own size, else the default in Settings."""
+    v = meta.get("disk_gb")
+    return v if type(v) is int and DISK_MIN_GB <= v <= DISK_MAX_GB else cfg["vm"]["disk_gb"]  # Stop When Idle, in minutes (0 = off)
 
 DEFAULT_CONFIG: dict = {
     "listen_port": 8765,
@@ -118,6 +125,10 @@ DEFAULT_CONFIG: dict = {
         "memory_mb": 4096,
         "max_cpus": 8,
         "max_memory_mb": 16384,
+        # An agent's disk, in GB: the default for new agents, and the most one may have.  Disks are thin
+        # files, so this PC only gives up the space an agent actually writes.
+        "disk_gb": 20,
+        "max_disk_gb": 200,
         "use_bwrap": "auto",          # "auto" | "required" | "off"
         "qemu_binary": "qemu-system-x86_64",
         # QEMU -cpu value. "host" is fastest; on hybrid Intel CPUs (P- and
@@ -670,9 +681,11 @@ def validate(cfg: dict) -> None:
     if len(json.dumps(pol.get("managed_settings", {}))) > 200_000:
         raise ValueError("claude_policy.managed_settings is too large")
     vm = cfg["vm"]
-    for k in ("cpus", "memory_mb", "max_cpus", "max_memory_mb", "task_timeout_minutes"):
-        if not isinstance(vm[k], int) or vm[k] <= 0:
+    for k in ("cpus", "memory_mb", "max_cpus", "max_memory_mb", "task_timeout_minutes", "disk_gb", "max_disk_gb"):
+        if not isinstance(vm[k], int) or isinstance(vm[k], bool) or vm[k] <= 0:
             raise ValueError(f"vm.{k} must be a positive integer")
+    if not DISK_MIN_GB <= vm["disk_gb"] <= vm["max_disk_gb"] <= DISK_MAX_GB:
+        raise ValueError(f"vm.disk_gb and vm.max_disk_gb must be from {DISK_MIN_GB} to {DISK_MAX_GB} GB, the default no more than the most")
     if vm.get("idle_stop_minutes") not in IDLE_STOP_CHOICES:
         raise ValueError(f"vm.idle_stop_minutes must be one of {', '.join(map(str, IDLE_STOP_CHOICES))} (0 is off)")
     if not re.fullmatch(r"[A-Za-z0-9_.=,+-]{1,200}", str(vm.get("cpu_model", ""))):

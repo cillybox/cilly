@@ -276,6 +276,40 @@ def apply_policy(policy: dict) -> None:
 CA_FILE = "/usr/local/share/ca-certificates/cilly-agent-vm.crt"
 
 
+def grow_root(boot) -> None:
+    """A disk made bigger than its image (the agent's disk size in the panel): the root partition and its
+    file system grow to fill it.  As root, at boot, before anything of the agent's runs, on the VM's own
+    disk only.  growpart leaves a partition that fills its disk as it is, and a file system that fills its
+    partition grows by nothing, so this is safe to run at every start."""
+    if not boot.get("grow_root"):
+        return
+    try:
+        r = subprocess.run(["findmnt", "-n", "-o", "SOURCE,FSTYPE", "/"], stdin=subprocess.DEVNULL,
+                           capture_output=True, text=True, timeout=10)
+        src, fstype = r.stdout.split()
+    except (OSError, subprocess.SubprocessError, ValueError):
+        log("disk: couldn't tell which partition is root, so it stays as it is")
+        return
+    m = re.fullmatch(r"(/dev/vd[a-z])([0-9]{1,2})", src)
+    if not m or fstype not in ("ext4", "xfs"):
+        log(f"disk: root is {src[:60]} ({fstype[:20]}), and only an ext4 or xfs partition of /dev/vdX grows")
+        return
+    if not shutil.which("growpart"):
+        log("disk: growpart isn't in this image, so the root partition stays as it is. Rebuild the image.")
+        return
+    g = subprocess.run(["growpart", m[1], m[2]], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=120)
+    if g.returncode != 0 and "NOCHANGE" not in g.stdout:  # NOCHANGE: it fills the disk (its file system may not yet)
+        log(f"disk: growpart failed: {(g.stdout + g.stderr).strip()[-300:]}")
+        return
+    fs = ["resize2fs", src] if fstype == "ext4" else ["xfs_growfs", "/"]
+    f = subprocess.run(fs, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=600)
+    if f.returncode != 0:
+        log(f"disk: {fs[0]} failed: {(f.stdout + f.stderr).strip()[-300:]}")
+        return
+    st = os.statvfs("/")
+    log(f"disk: root fills the disk, {st.f_blocks * st.f_frsize >> 30} GiB")
+
+
 def install_ca(boot) -> None:
     """With "Keep tokens on this PC", this VM holds stand-ins only, and the egress proxy puts the
     real tokens in on the way out.  For that the VM trusts a CA made for this start, which may only
@@ -3000,6 +3034,7 @@ def main() -> int:
         return 0
     ctl.send(type="phase", phase="policy")  # boot progress for the panel, in fixed names only
     apply_policy(hello.get("policy") or {})
+    grow_root(boot)
     install_ca(boot)
     write_gitconfig(boot)
     setup_inject(boot, tarinfo)

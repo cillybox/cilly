@@ -71,6 +71,7 @@ with tarfile.open(drives["task"]) as tf:
             say(f"restored {n}: {tf.extractfile(m).read().decode()}")
 say(f"boot mode={boot['mode']} repo={boot['repo']} memory_entries={len(mem)} restore={boot.get('restore_memory')}")
 say(f"boot ca={'yes' if (boot.get('ca') or '').startswith('-----BEGIN CERTIFICATE-----') else 'no'}")  # this start's CA
+say(f"boot grow_root={boot.get('grow_root')}")  # its disk is bigger than its image: the runner grows root
 
 ctl, _ = listeners["ctl"].accept()
 time.sleep(float(os.environ.get("FAKE_HELLO_WAIT", "0")))  # a guest still booting: nothing reads the control port yet

@@ -162,6 +162,22 @@ def list_base_images() -> list[str]:
         return []
 
 
+GIB = 1 << 30
+
+
+def disk_size(path: str) -> int:
+    """A disk's size as the VM sees it, in bytes (qemu-img info), not the space its file takes."""
+    try:
+        info = json.loads(subprocess.run(["qemu-img", "info", "--output=json", path], check=True,
+                                         capture_output=True, timeout=60).stdout)
+    except (OSError, subprocess.SubprocessError, ValueError) as e:
+        raise VMError(f"Couldn't read the size of {os.path.basename(path)}: {e}") from None
+    size = info.get("virtual-size") if isinstance(info, dict) else None
+    if type(size) is not int or size <= 0:
+        raise VMError(f"Couldn't read the size of {os.path.basename(path)}.")
+    return size
+
+
 def image_info(name: str) -> dict:
     """What an image was built with, from the note the build left next to it (on the host).  "outdated":
     built before the rename to cilly, so the runner inside listens under the old names and never answers."""
@@ -1144,15 +1160,22 @@ class Manager:
                     raise VMError("Its disk was made from an image built before cilly's rename. Rebuild the image under "
                                   "Settings → VM images, then use Move to new image in ··· to keep its files, or Reset to clean.")
                 old_names = True
+            if C.disk_gb(a.meta, cfg) * GIB > disk_size(p.disk):  # made bigger while it was stopped: a disk only grows
+                subprocess.run(["qemu-img", "resize", "-q", p.disk, f"{C.disk_gb(a.meta, cfg)}G"],
+                               check=True, capture_output=True, timeout=60)
         else:
             _rm(p.disk)
             base = base_image_path(cfg, a.meta.get("image"), a.meta.get("profile", "coding"))  # its own pick, else the default
             if image_info(os.path.basename(base))["outdated"]:
                 raise VMError(f"{os.path.basename(base)} was built before cilly's rename. Rebuild it under Settings → VM images, "
                               "then start the agent again.")
-            subprocess.run(["qemu-img", "create", "-q", "-f", "qcow2", "-F", "qcow2", "-b", base, p.disk],
+            want = C.disk_gb(a.meta, cfg) * GIB  # the image's own size unless it's bigger: never smaller than what's on it
+            subprocess.run(["qemu-img", "create", "-q", "-f", "qcow2", "-F", "qcow2", "-b", base, p.disk]
+                           + ([f"{want // GIB}G"] if want > disk_size(base) else []),
                            check=True, capture_output=True, timeout=60)
             a.set(base_image=os.path.basename(base))
+        # bigger than the image it came from: the runner grows the root partition and file system to fill it
+        grow_root = disk_size(p.disk) > disk_size(base)
 
         from . import memory as M
         _rm(p.memout)
@@ -1177,6 +1200,7 @@ class Manager:
         boot = {
             "agent_id": a.id, "name": a.meta["name"], "mode": mode, "repo": a.meta.get("repo"),
             # its account's, for git's config (each task also says who its commits are by)
+            "grow_root": grow_root,  # an older runner ignores it, and the space waits unused
             "identity": C.account_identity(cfg, C.token_for_repo(cfg, a.meta["repo"], a.meta.get("account")) if a.meta.get("repo")
                                            else a.meta.get("account") or next(iter(cfg["tokens"]), None)),
             # the panel stops the VM after a task (see _on_guest), so the switch works on a running agent too.

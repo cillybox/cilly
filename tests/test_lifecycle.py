@@ -819,6 +819,35 @@ class LifecycleTests(unittest.TestCase):
         self.mgr.stop(a.id)
         self.wait(lambda: a.meta["state"] == "stopped" and not a.running, "stop")
 
+    def test_an_agents_disk_is_its_size_and_a_kept_one_only_grows(self):
+        calls = os.path.join(self.tmp.name, "qemu-img.log")
+        os.environ["FAKE_QEMU_IMG_LOG"] = calls  # inside this test's patched environment
+        imgs = lambda: open(calls).read().splitlines() if os.path.exists(calls) else []  # noqa: E731
+        a = self.make("persistent")
+        a.set(disk_gb=60)
+        self.start(a)
+        self.wait(lambda: a.meta["state"] == "ready", "ready")
+        made = [c for c in imgs() if c.startswith("create")]
+        self.assertTrue(made[-1].endswith(f"{a.paths.disk} 60G"), made)
+        self.assertIn("boot grow_root=True", self.log(a))
+        self.mgr.stop(a.id)
+        self.wait(lambda: a.meta["state"] == "stopped", "stopped")
+        a.set(disk_gb=80)  # made bigger while stopped
+        self.start(a)
+        self.wait(lambda: a.meta["state"] == "ready", "ready again")
+        self.assertIn(f"resize -q {a.paths.disk} 80G", imgs())
+        self.assertEqual(len([c for c in imgs() if c.startswith("create")]), 1)  # the same disk, grown
+        self.mgr.stop(a.id)
+        self.wait(lambda: a.meta["state"] == "stopped", "stopped")
+        b = self.mgr.create(name="small", mode="ephemeral", repo=REPO, agent="claude", cpus=1, memory_mb=1024,
+                            auto_stop=False, branch_prefix="agent/")
+        b.set(disk_gb=20)  # the image's own size: nothing to grow
+        self.start(b)
+        self.wait(lambda: b.meta["state"] == "ready", "the small one ready")
+        self.assertTrue([c for c in imgs() if c.startswith("create")][-1].endswith(b.paths.disk))
+        self.assertIn("boot grow_root=False", self.log(b))
+        self.mgr.stop(b.id)
+
     def test_stop_during_a_task_keeps_the_memory(self):
         """The panel's side of Stop during a task: it waits while the VM finishes the task, then imports
         the memory, and the next start restores it.  The fake QEMU plays the runner and always finishes a

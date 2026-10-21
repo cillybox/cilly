@@ -41,6 +41,29 @@ class RunnerTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
+    def test_root_grows_to_fill_a_bigger_disk(self):
+        def grow(boot, root="/dev/vda1 ext4", growpart=(0, "CHANGED: partition=1"), have=True):
+            calls = []
+
+            def run(args, **kw):
+                calls.append(args)
+                rc, out = {"findmnt": (0, root + "\n"), "growpart": growpart}.get(args[0], (0, ""))
+                return mock.Mock(returncode=rc, stdout=out, stderr="")
+            with mock.patch.object(self.r.subprocess, "run", side_effect=run), \
+                    mock.patch.object(self.r.shutil, "which", lambda n: "/usr/bin/" + n if have else None), \
+                    mock.patch.object(self.r, "log", lambda *a: None):
+                self.r.grow_root(boot)
+            return [c[0] if c[0] != "growpart" else " ".join(c) for c in calls]
+        self.assertEqual(grow({}), [])  # not bigger than its image: nothing runs
+        self.assertEqual(grow({"grow_root": True}), ["findmnt", "growpart /dev/vda 1", "resize2fs"])
+        self.assertEqual(grow({"grow_root": True}, growpart=(1, "NOCHANGE: partition 1 is size 41940959")),
+                         ["findmnt", "growpart /dev/vda 1", "resize2fs"])  # a start that grew the partition but not its file system
+        self.assertEqual(grow({"grow_root": True}, growpart=(2, "FAILED: something")), ["findmnt", "growpart /dev/vda 1"])
+        self.assertEqual(grow({"grow_root": True}, root="/dev/vda1 xfs"), ["findmnt", "growpart /dev/vda 1", "xfs_growfs"])
+        for root in ("/dev/mapper/root ext4", "/dev/vda1 btrfs", "/dev/vda1;rm ext4", "garbage"):
+            self.assertEqual(grow({"grow_root": True}, root=root), ["findmnt"], root)  # anything else stays as it is
+        self.assertEqual(grow({"grow_root": True}, have=False), ["findmnt"])  # an image without growpart
+
     def test_read_boot_with_inject(self):
         src = os.path.join(self.d, "home", "src")
         os.makedirs(os.path.join(src, "sub"))

@@ -226,6 +226,15 @@ function projectParts(p, drafts) {
       pdRow(optSec("Stop after each task", seg([["", "Not set"], ["on", "On"], ["off", "Off"]], d.auto_stop === true ? "on" : d.auto_stop === false ? "off" : "",
         (v) => setD("auto_stop", v === "" ? null : v === "on"), "small")),
       optSec(["Keep outboxes", infoTip("Ephemeral agents here copy ~/outbox into a new subfolder of this folder when they stop. Leave it empty to turn it off.")], keepIn)),
+      pdRow(optSec("Disk", (() => {  // GB for new agents here: their disks are thin files
+        const max = STATE.vm_defaults?.max_disk_gb || 200;
+        const sel = el("select", { class: "select", "aria-label": "Disk" }, el("option", { value: "" }, `Not set (${STATE.vm_defaults?.disk_gb || 20} GB)`),
+          ...[...new Set([20, 30, 40, 60, 80, 100, 150, 200, 300, 400, 500, d.disk_gb].filter((g) => g && g <= max))].sort((x, y) => x - y)
+            .map((g) => el("option", { value: g }, `${g} GB`)));
+        sel.value = d.disk_gb || "";
+        sel.addEventListener("change", () => setD("disk_gb", +sel.value || null));
+        return sel;
+      })(), el("span", { class: "dim small" }, "For big builds, like Rust or Android."))),
       pdRow(optSec("Model", modelSelect(d.model ? { model: d.model, server: d.model_server || undefined } : null,
         (m) => updateProject(p.id, { defaults: { model: m?.model || null, model_server: m?.server || null } }), () => { SIGS.project = null; VIEWS.project.update(); })),
       optSec("Effort", seg(EFFORTS, d.effort || "", (v) => setD("effort", v || null), "small wrap"))),

@@ -372,7 +372,7 @@ function renderSandbox(a) {
   const blocked = blockedOf(a), checks = selftestList(a);
   resetPicks(a);
   if (!changed("sandbox", [a.id, blocked, a.selftest, a.egress_extra, a.egress_skip, STATE.setup?.allow, a.mcp, projectById(a.project)?.allow, a.mode, a.has_disk, a.memory, a.image, a.base_image,
-    a.cpus, a.memory_mb, isStopped(a), a.running, STATE.vm_defaults, AV.res, AV.stOpen, a.bash_limit_minutes, a.bg_limit_minutes, a.task_limit_minutes, a.limits_ignored, AV.lim,
+    a.cpus, a.memory_mb, a.disk_gb, isStopped(a), a.running, STATE.vm_defaults, AV.res, AV.stOpen, a.bash_limit_minutes, a.bg_limit_minutes, a.task_limit_minutes, a.limits_ignored, AV.lim,
     a.inject_source, a.repo, a.project, a.claude_md, isOwner(), STATE.mcp_servers, STATE.egress_ports, STATE.images, STATE.permission_mode, a.policy_version, STATE.policy_version, STATE.base_image, STATE.research_base_image])) {
     memUsed(a);  // changes every few seconds: updated in place, so the tab never redraws under your hands
     return;
@@ -498,33 +498,39 @@ function memUsed(a) {
   if (AV.memUsed) AV.memUsed.textContent = a.running && a.mem_used_mb ? `Using ${memText(a.mem_used_mb)} now` : "";
 }
 function resetPicks(a) {  // picks in This VM wait here until saved: resources only while stopped (and from the PC), limits any time
-  if (AV.res?.aid !== a.id || !isOwner() || !isStopped(a)) AV.res = { aid: a.id, cpus: a.cpus, mem: a.memory_mb };
+  if (AV.res?.aid !== a.id || !isOwner() || !isStopped(a)) AV.res = { aid: a.id, cpus: a.cpus, mem: a.memory_mb, disk: diskOf(a) };
   if (AV.lim?.aid !== a.id) AV.lim = { aid: a.id };
 }
+const diskOf = (a) => a.disk_gb || STATE.vm_defaults.disk_gb || 20;  // older agents: the default
 function resourcesRow(a) {
   const lim = STATE.vm_defaults, may = isOwner() && isStopped(a);
-  const r = AV.res, dirty = r.cpus !== a.cpus || r.mem !== a.memory_mb;
+  const r = AV.res, dirty = r.cpus !== a.cpus || r.mem !== a.memory_mb || r.disk !== diskOf(a);
+  const kept = a.mode === "persistent";  // its disk stays, so it only grows
   const opts = (list, cur) => [...new Set([...list, cur])].sort((x, y) => x - y);
   const cpus = el("select", { class: "select", "aria-label": "vCPUs", disabled: !may },
     opts([1, 2, 3, 4, 6, 8, 12, 16, 24, 32].filter((n) => n <= lim.max_cpus), r.cpus).map((n) => el("option", { value: n }, `${n} vCPU`)));
   const mem = el("select", { class: "select", "aria-label": "Memory", disabled: !may },
     opts([1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64].map((g) => g * 1024).filter((m) => m <= lim.max_memory_mb), r.mem).map((m) => el("option", { value: m }, gib(m))));
-  cpus.value = r.cpus; mem.value = r.mem;
-  const pick = () => { Object.assign(AV.res, { cpus: +cpus.value, mem: +mem.value }); renderSandbox(agentById(a.id) || a); };
-  cpus.addEventListener("change", pick); mem.addEventListener("change", pick);
+  const disk = el("select", { class: "select", "aria-label": "Disk", disabled: !may },
+    opts([20, 30, 40, 60, 80, 100, 150, 200, 300, 400, 500].filter((g) => g <= (lim.max_disk_gb || 200) && (!kept || g >= diskOf(a))), r.disk)
+      .map((g) => el("option", { value: g }, `${g} GB disk`)));
+  cpus.value = r.cpus; mem.value = r.mem; disk.value = r.disk;
+  const pick = () => { Object.assign(AV.res, { cpus: +cpus.value, mem: +mem.value, disk: +disk.value }); renderSandbox(agentById(a.id) || a); };
+  cpus.addEventListener("change", pick); mem.addEventListener("change", pick); disk.addEventListener("change", pick);
   const save = async () => {
     try {
-      await api("POST", `/api/agents/${a.id}/resources`, { cpus: r.cpus, memory_mb: r.mem });
-      toast(`Saved. ${a.name} uses ${r.cpus} vCPU and ${gib(r.mem)} from its next start.`);
+      await api("POST", `/api/agents/${a.id}/resources`, { cpus: r.cpus, memory_mb: r.mem, disk_gb: r.disk });
+      toast(`Saved. ${a.name} uses ${r.cpus} vCPU, ${gib(r.mem)} and a ${r.disk} GB disk from its next start.`);
     } catch (e) { toast(e.message, true); return; }
     await loadState();
   };
   AV.memUsed = el("span", { class: "vm-note" });
   memUsed(a);
   return vmRow(el("div", { class: "row nowrap" }, el("span", { class: "vm-k grow" }, "Resources", infoTip("Idle VMs give unused memory back to your PC.")), AV.memUsed),
-    el("div", { class: "row nowrap" }, cpus, mem, may && dirty ? el("button", { class: "btn small primary", onclick: save }, "Save") : ""),
+    el("div", { class: "row res-picks" }, cpus, mem, disk, may && dirty ? el("button", { class: "btn small primary", onclick: save }, "Save") : ""),
     el("span", { class: "vm-note" }, !isOwner() ? "Changed on your PC." : !isStopped(a) ? "Stop the agent to change these."
-      : `Applied at its next start. Limits: ${lim.max_cpus} vCPU, ${gib(lim.max_memory_mb)}.`));
+      : `Applied at its next start. Limits: ${lim.max_cpus} vCPU, ${gib(lim.max_memory_mb)}, ${lim.max_disk_gb || 200} GB disk.`
+        + (kept ? " Its disk is kept, so it can only grow." : "")));
 }
 const minText = (m) => (m === 0 ? "Until the task ends" : m % 60 ? `${m} min` : `${m / 60} h`);  // 0: no limit of its own
 // One of the agent's limits, in minutes (null: the default). A pick waits in AV.lim until you save it.

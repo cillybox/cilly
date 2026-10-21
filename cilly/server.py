@@ -274,9 +274,11 @@ def idle_stop_minutes(meta: dict, default: int) -> int:
     return default if meta.get("mode") == "persistent" and meta.get("profile") != "research" else 0
 
 
-def check_resources(cpus: int, mem: int, cfg: dict) -> None:
+def check_resources(cpus: int, mem: int, cfg: dict, disk: int | None = None) -> None:
     if not (1 <= cpus <= cfg["vm"]["max_cpus"]) or not (512 <= mem <= cfg["vm"]["max_memory_mb"]):
         raise ApiError(f"Choose 1 to {cfg['vm']['max_cpus']} vCPUs and 512 to {cfg['vm']['max_memory_mb']} MiB of memory.")
+    if disk is not None and not C.DISK_MIN_GB <= disk <= cfg["vm"]["max_disk_gb"]:
+        raise ApiError(f"Choose a disk of {C.DISK_MIN_GB} to {cfg['vm']['max_disk_gb']} GB.")
 
 
 # An agent's own limits, in minutes.  Claude Code gives a Bash command 2 minutes unless it asks for
@@ -843,7 +845,8 @@ class App:
             "accounts": [dict(C.account_identity(cfg, n), token=n, repos=list(t.get("repos", [])),
                               placeholder=C.placeholder_identity(cfg, n)) for n, t in cfg["tokens"].items()],
             "agents": {k: {"label": v.get("label", k)} for k, v in cfg["agents"].items()},
-            "vm_defaults": {k: cfg["vm"][k] for k in ("cpus", "memory_mb", "max_cpus", "max_memory_mb", "task_timeout_minutes")},
+            "vm_defaults": dict({k: cfg["vm"][k] for k in ("cpus", "memory_mb", "max_cpus", "max_memory_mb", "task_timeout_minutes",
+                                                           "disk_gb", "max_disk_gb")}, min_disk_gb=C.DISK_MIN_GB),
             "attachments": dict(cfg["attachments"]),  # the message box checks a file's size before it reads it
             "base_images": list_base_images(),
             "base_image": default_image(cfg),
@@ -1616,9 +1619,11 @@ class App:
         try:
             cpus = int(body.get("cpus") or cfg["vm"]["cpus"])
             mem = int(body.get("memory_mb") or cfg["vm"]["memory_mb"])
+            disk = body.get("disk_gb")
+            disk = int(disk) if disk is not None else None
         except (TypeError, ValueError):
             raise ApiError("cpus/memory must be integers") from None
-        check_resources(cpus, mem, cfg)
+        check_resources(cpus, mem, cfg, disk)
         # research agents stay up between requests (queued requests would be lost on power-off)
         auto_stop = bool(body.get("auto_stop", mode == "ephemeral")) and profile == "coding"
         manifest, imode = self._manifest_from(body.get("inject"))
@@ -1654,6 +1659,9 @@ class App:
             plugins = [n for n in (project or {}).get("defaults", {}).get("plugins", []) if n in cfg.get("plugins", {})]
         if skills is None:
             skills = [n for n in (project or {}).get("defaults", {}).get("skills", []) if n in self.skills.list()]
+        if disk is None and (project or {}).get("defaults", {}).get("disk_gb"):
+            disk = min(project["defaults"]["disk_gb"], cfg["vm"]["max_disk_gb"])  # the project's, within the limit
+        ag.set(disk_gb=disk or cfg["vm"]["disk_gb"])  # kept, like its vCPUs and memory: a later default is for new agents
         if account is None and repo and (project or {}).get("defaults", {}).get("account") in C.tokens_for_repo(cfg, repo):
             account = project["defaults"]["account"]  # the project's, while it reaches the repository
         ag.set(egress_skip=skip, account=account)
@@ -2244,11 +2252,13 @@ class App:
         return ag.public()
 
     def api_agent_resources(self, aid: str, body) -> dict:
-        """CPUs and memory for a stopped agent, used from its next start.  Same limits as New Agent."""
-        cpus, mem = body.get("cpus"), body.get("memory_mb")
-        if not all(type(v) is int for v in (cpus, mem)):
-            raise ApiError("CPUs and memory must be whole numbers.")
-        check_resources(cpus, mem, self.cfg())
+        """CPUs, memory and disk for a stopped agent, used from its next start.  Same limits as New Agent.
+        A disk that's kept (persistent) only grows: nothing on it is ever cut off."""
+        cfg = self.cfg()
+        cpus, mem, disk = body.get("cpus"), body.get("memory_mb"), body.get("disk_gb")
+        if not all(type(v) is int for v in (cpus, mem)) or (disk is not None and type(disk) is not int):
+            raise ApiError("CPUs, memory and disk must be whole numbers.")
+        check_resources(cpus, mem, cfg, disk)
         try:
             ag = self.manager.get(aid)
         except VMError as e:
@@ -2256,7 +2266,11 @@ class App:
         with ag.lock:  # Start takes the same lock, so this can't land halfway through a start
             if ag.running or ag.meta.get("state") not in ("stopped", "failed"):
                 raise ApiError("Stop the agent first. Its resources apply at the next start.", 409)
-            ag.set(cpus=cpus, memory_mb=mem)
+            if disk is not None and ag.meta.get("mode") == "persistent" and os.path.exists(ag.paths.disk) \
+                    and disk < C.disk_gb(ag.meta, cfg):
+                raise ApiError(f"A kept disk can only grow. It's {C.disk_gb(ag.meta, cfg)} GB now. "
+                               "Reset to clean starts a new one at any size.")
+            ag.set(cpus=cpus, memory_mb=mem, **({"disk_gb": disk} if disk is not None else {}))
         return ag.public()
 
     def api_agent_limits(self, aid: str, body) -> dict:
@@ -2950,6 +2964,10 @@ class App:
                 out["skills"] = [n for n in d["skills"] if n in lib] if isinstance(d["skills"], list) else []
             if "skip_global" in d:
                 out["skip_global"] = self._global_skip(d["skip_global"])
+            if "disk_gb" in d:
+                if d["disk_gb"] is not None and (type(d["disk_gb"]) is not int or not C.DISK_MIN_GB <= d["disk_gb"] <= cfg["vm"]["max_disk_gb"]):
+                    raise ApiError(f"Choose a disk of {C.DISK_MIN_GB} to {cfg['vm']['max_disk_gb']} GB.")
+                out["disk_gb"] = d["disk_gb"]
             if "account" in d:  # for a repository more than one account has ticked
                 if d["account"] and d["account"] not in cfg["tokens"]:
                     raise ApiError("unknown account")

@@ -1679,6 +1679,23 @@ class UiTests(unittest.TestCase):
         """)
         self.assertEqual(got, [True, False, ["cillybox (default)", "acme-agent"], "bot", "work", "work", "me/app"])
 
+    def test_a_kept_disk_is_only_offered_bigger_sizes(self):
+        got = self.run_js("""
+          STATE = { role: "owner", agents_list: [], vm_defaults: { max_cpus: 8, max_memory_mb: 16384, max_disk_gb: 200, disk_gb: 20 } };
+          const sizes = (a) => {
+            AV = AV || {}; AV.res = null; resetPicks(a);
+            const walk = (n, out) => { if (n && n.tag === "select" && n.attrs["aria-label"] === "Disk") out.push(n); (n?.kids || []).forEach((k) => typeof k === "object" && walk(k, out)); return out; };
+            const sel = walk(resourcesRow(a), [])[0];
+            return [sel.kids.map((o) => o.textContent).join(","), String(sel.value)];
+          };
+          const base = { id: "a1", name: "x", cpus: 2, memory_mb: 2048, state: "stopped", running: false };
+          console.log(JSON.stringify([sizes(Object.assign({ disk_gb: 60, mode: "persistent" }, base)),
+            sizes(Object.assign({ disk_gb: 60, mode: "ephemeral" }, base)), sizes(Object.assign({ mode: "ephemeral" }, base))]));
+        """)
+        self.assertEqual(got, [["60 GB disk,80 GB disk,100 GB disk,150 GB disk,200 GB disk", "60"],
+                               ["20 GB disk,30 GB disk,40 GB disk,60 GB disk,80 GB disk,100 GB disk,150 GB disk,200 GB disk", "60"],
+                               ["20 GB disk,30 GB disk,40 GB disk,60 GB disk,80 GB disk,100 GB disk,150 GB disk,200 GB disk", "20"]])
+
     def test_secrets_list_order_and_names(self):
         got = self.run_js("""
           const st = { "token:bot": "pasted", "panel_token": "missing", "mcp:PIXELLAB_API_KEY": "missing",
