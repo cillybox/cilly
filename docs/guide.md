@@ -154,6 +154,8 @@ whisper.cpp can run on this PC, or on another PC on your network, ideally one wi
 
 The browser asks for microphone permission the first time. Audio goes browser → panel → your whisper server, and nowhere else. There's no proxy, no redirects are followed, and the VMs can't reach the whisper server. It travels unencrypted over your network (whisper.cpp's server has no HTTPS), so use another PC only on a network you trust, or reach it through Tailscale, WireGuard or an SSH tunnel. Recordings stop after the maximum set there (120 s unless you change it).
 
+If the whisper server can't be reached, for example because that PC is off or your VPN is down, the panel finds out within 5 s, and the recording stops with one message that says why. The text it already has stays in the message box, and you can type again at once. After you stop a recording, the box waits for the last phrase at most the server's time limit (`speech.timeout_s`, 60 s) and a little more. While it waits, the mic button or Esc cancels, and the box comes back with the text so far.
+
 ### Agents without a repository
 
 Leave the repository empty and the agent works in `~/scratch` inside its VM, with no git, no GitHub token and no PR. Two ways to get the work out:

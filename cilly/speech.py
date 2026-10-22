@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import secrets
+import socket
 import struct
 import urllib.error
 import urllib.request
@@ -20,6 +21,22 @@ from urllib.parse import urlparse
 
 class SpeechError(Exception):
     pass
+
+
+# A whisper server on your network takes a connection at once.  One that can't be reached (switched
+# off, or a VPN that's down) would otherwise hold every phrase for the whole timeout.
+CONNECT_TIMEOUT = 5
+
+
+def _reachable(url: str, timeout: float) -> None:
+    u = urlparse(url)
+    try:
+        socket.create_connection((u.hostname, u.port or (443 if u.scheme == "https" else 80)),
+                                 timeout=min(CONNECT_TIMEOUT, timeout)).close()
+    except TimeoutError:
+        raise SpeechError(f"can't reach the whisper server at {u.netloc}: no answer within {min(CONNECT_TIMEOUT, timeout):g} s") from None
+    except OSError as e:
+        raise SpeechError(f"can't reach the whisper server at {u.netloc}: {e.strerror or e.__class__.__name__}") from None
 
 
 def check_url(url: str) -> str:
@@ -66,6 +83,7 @@ def transcribe(url: str, wav: bytes, *, language: str = "", timeout: float = 60)
     parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="speech.wav"\r\n'
                  "Content-Type: audio/wav\r\n\r\n".encode() + wav + b"\r\n")
     parts.append(f"--{boundary}--\r\n".encode())
+    _reachable(check_url(url), timeout)
     req = urllib.request.Request(check_url(url) + "/inference", data=b"".join(parts), method="POST",
                                  headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
     # direct connection (no proxy env), no redirects

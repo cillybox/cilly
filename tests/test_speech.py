@@ -98,3 +98,31 @@ class SpeechTests(unittest.TestCase):
         for bad in ("ftp://x", "http://user:pw@host", "http://host/?q=1", "192.168.1.5:8080", "http://"):
             with self.assertRaises(ValueError, msg=bad):
                 S.check_url(bad)
+
+
+class UnreachableTests(unittest.TestCase):
+    """A whisper server that can't be reached fails in seconds, not after the whole timeout per phrase."""
+
+    def test_refused_and_silent_servers_fail_fast(self):
+        import socket
+        with socket.socket() as s:  # a port nothing listens on
+            s.bind(("127.0.0.1", 0))
+            port = s.getsockname()[1]
+        with self.assertRaises(S.SpeechError) as cm:
+            S.transcribe(f"http://127.0.0.1:{port}", make_wav(), timeout=60)
+        self.assertIn(f"can't reach the whisper server at 127.0.0.1:{port}", str(cm.exception))
+        seen = []
+
+        def silent(addr, timeout):
+            seen.append((addr, timeout))
+            raise TimeoutError("timed out")
+        with mock.patch.object(S.socket, "create_connection", side_effect=silent), \
+                mock.patch.object(S.urllib.request.OpenerDirector, "open", side_effect=AssertionError("no audio is sent")):
+            with self.assertRaises(S.SpeechError) as cm:
+                S.transcribe("https://gpu-box.local", make_wav(), timeout=60)
+        self.assertEqual(seen, [(("gpu-box.local", 443), S.CONNECT_TIMEOUT)])
+        self.assertEqual(str(cm.exception), "can't reach the whisper server at gpu-box.local: no answer within 5 s")
+
+
+if __name__ == "__main__":
+    unittest.main()

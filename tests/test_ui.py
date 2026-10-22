@@ -1934,6 +1934,74 @@ class UiTests(unittest.TestCase):
         keys = re.findall(r'\["(\w+)", "[^"]+"\]', read(os.path.join(STATIC, "pages.js")).split("const SETTINGS_TABS = ", 1)[1].split(";", 1)[0])
         self.assertTrue(tabs and set(tabs) <= set(keys), (tabs, keys))
 
+    def test_a_whisper_server_that_cant_be_reached_never_locks_the_box(self):
+        """The box stayed read-only, with a red mic and no way to type, while every phrase waited for a
+        whisper server that wasn't there: only reopening the panel got it back."""
+        got = self.run_js(r"""
+          STATE = { speech: { enabled: true, timeout_s: 60 } };
+          navigator.mediaDevices = { getUserMedia: async () => ({ getTracks: () => [{ stop() {} }] }) };
+          globalThis.AudioContext = class { constructor() { this.sampleRate = 48000; this.destination = {}; }
+            createMediaStreamSource() { return { connect() {} }; } createScriptProcessor() { return { connect() {} }; } close() {} };
+          const box = () => { const ta = el("textarea"); Object.assign(ta, { value: "Fix ", selectionStart: 4, selectionEnd: 4, setSelectionRange() {}, dispatchEvent() {} }); return ta; };
+          const tick = (ms = 20) => new Promise((r) => setTimeout(r, ms));
+          const toasts = [];
+          toast = (m) => toasts.push(m);
+          const phrase = () => {  // a phrase you finished saying
+            VOICE.seg = { id: ++VOICE.segId, frames: [new Float32Array(480)], ms: 1000, voicedMs: 1000, silentMs: 0, dirty: false };
+            voiceCloseSegment();
+          };
+          const state = (ta, b) => [VOICE.on, !!VOICE.area, ta.readOnly, b.classList.contains("recording"), ta.value];
+          const mic = (ta) => {  // a button with a working class list (the fake DOM's ignores add and remove)
+            const b = micButton(ta, null, "agent:a1"), on = new Set();
+            b.classList = { add: (c) => on.add(c), remove: (c) => on.delete(c), toggle() {}, contains: (c) => on.has(c) };
+            return b;
+          };
+          const out = [];
+          // 1. the server can't be reached: one toast, the recording stops, the box comes back with your text
+          let calls = 0;
+          api = async () => { calls++; await tick(); throw new Error("can't reach the whisper server at gpu-box:8080: no answer within 5 s"); };
+          let ta = box(), b = mic(ta);
+          b.fire("click"); await tick();
+          phrase(); phrase(); phrase();
+          // and one you're still saying when the failure comes back: stopping closes it, and it mustn't wait
+          VOICE.seg = { id: ++VOICE.segId, frames: [new Float32Array(480)], ms: 600, voicedMs: 600, silentMs: 0, dirty: false };
+          for (let i = 0; i < 10; i++) await tick();
+          out.push([calls, toasts, state(ta, b)]);
+          // 2. the server hangs: stopping shows Cancel, and the mic (or Esc) gives the box back at once
+          let answer;
+          api = () => new Promise((r) => { answer = r; });
+          ta = box(); b = mic(ta);
+          b.fire("click"); await tick();
+          phrase();
+          b.fire("click"); await tick();  // stop: it waits for the phrase
+          out.push([b.title, state(ta, b)]);
+          b.fire("click"); await tick(); await tick(80);  // cancel
+          out.push(state(ta, b));
+          // 3. a new recording; the old answer comes back late and stays out of it
+          b.fire("click"); await tick();
+          answer({ text: "old words" }); await tick();
+          out.push([VOICE.texts, ta.value]);
+          b.fire("click"); await tick(80);
+          // 4. a hanging server can't hold the box past its time limit, even when timers run late
+          api = () => new Promise(() => {});
+          ta = box(); b = mic(ta);
+          b.fire("click"); await tick(); phrase();
+          b.fire("click"); await tick();
+          const now = Date.now; Date.now = () => now() + 71000; await tick(80); Date.now = now;
+          out.push(state(ta, b));
+          console.log(JSON.stringify(out));
+        """)
+        failed, cancel_shown, cancelled, late, timed_out = got
+        self.assertEqual(failed[0], 1)  # the first failure ends it: no request per phrase
+        self.assertEqual(failed[1], ["Voice input stopped: can't reach the whisper server at gpu-box:8080: no answer within 5 s"])
+        self.assertEqual(failed[2], [False, False, False, False, "Fix "])
+        self.assertEqual(cancel_shown, ["Turning your words into text. Click to cancel.", [False, True, True, True, "Fix "]])
+        self.assertEqual(cancelled, [False, False, False, False, "Fix "])
+        self.assertEqual(late, [[], "Fix "])
+        self.assertEqual(timed_out, [False, False, False, False, "Fix "])
+        app = read(os.path.join(STATIC, "app.js"))
+        self.assertIn('else if (typeof VOICE !== "undefined" && VOICE.area) voiceCancel();', app)  # Esc cancels too
+
     def test_the_mic_always_lets_go(self):
         """Drawing the message box again (another tab and back) made a new mic button that couldn't stop the
         recording: the browser kept the microphone, and a new recording couldn't start."""

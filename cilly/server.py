@@ -869,7 +869,7 @@ class App:
                             for n, s in cfg.get("mcp_servers", {}).items()},
             "home": os.path.expanduser("~"),
             "speech": {"enabled": bool(cfg["speech"]["enabled"] and cfg["speech"]["whisper_url"]),
-                       "max_seconds": cfg["speech"]["max_seconds"],
+                       "max_seconds": cfg["speech"]["max_seconds"], "timeout_s": cfg["speech"]["timeout_s"],
                        "host": urlparse(cfg["speech"]["whisper_url"]).netloc},
             "policy_version": cfg["policy_version"],
             "setup": self._setup_state(cfg),

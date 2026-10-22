@@ -6,7 +6,7 @@
 const VAD = { pauseMs: 700, minSpeechMs: 250, preRollMs: 300, minGapMs: 400, sessionMs: 10 * 60 * 1000 };
 const VOICE = { on: false, starting: false, key: "", gone: 0, btn: null, area: null, ctx: null, stream: null, rate: 48000, prefix: "", suffix: "",
                 started: 0, timer: null, seg: null, pre: [], noise: 0.003, segId: 0, finals: [], texts: [],
-                interim: "", busy: false, lastSend: 0 };
+                interim: "", busy: false, lastSend: 0, session: 0, failed: "", cancel: false };
 
 function voicePcm16k(frames) {
   const n = frames.reduce((s, c) => s + c.length, 0);
@@ -70,7 +70,7 @@ function voiceFrame(buf) {
 function voiceCloseSegment() {
   const seg = VOICE.seg;
   VOICE.seg = null;
-  if (seg && seg.voicedMs >= VAD.minSpeechMs) {
+  if (seg && seg.voicedMs >= VAD.minSpeechMs && !VOICE.failed) {  // after a failure, nothing more is sent
     const frameMs = seg.ms / seg.frames.length;  // drop the pause that ended it, keep ~200 ms
     seg.frames.length -= Math.max(0, Math.min(seg.frames.length - 1, Math.floor((seg.silentMs - 200) / frameMs)));
     seg.idx = VOICE.texts.length;
@@ -83,13 +83,19 @@ function voiceCloseSegment() {
 async function voiceTranscribe(frames) {
   return (await api("POST", "/api/transcribe", { audio: wavBase64(voicePcm16k(frames)) })).text;
 }
-// one request at a time: finished phrases first, then a preview of the current one
+// one request at a time: finished phrases first, then a preview of the current one.  An answer that
+// comes back after its recording ended (cancelled, or a new one started) is dropped.
 async function voicePump() {
-  if (VOICE.busy) return;
+  if (VOICE.busy || VOICE.failed) return;
+  const session = VOICE.session;
   if (VOICE.finals.length) {
     const seg = VOICE.finals.shift();
     VOICE.busy = true;
-    try { VOICE.texts[seg.idx] = await voiceTranscribe(seg.frames); } catch (e) { toast(e.message, true); }
+    try {
+      const t = await voiceTranscribe(seg.frames);
+      if (session === VOICE.session) VOICE.texts[seg.idx] = t;
+    } catch (e) { if (session === VOICE.session) voiceFail(e.message); }
+    if (session !== VOICE.session) return;
     VOICE.busy = false;
     voiceRender();
     return voicePump();
@@ -100,11 +106,27 @@ async function voicePump() {
   VOICE.busy = true; VOICE.lastSend = Date.now();
   try {
     const t = await voiceTranscribe(seg.frames.slice());
-    if (VOICE.seg && VOICE.seg.id === seg.id) { VOICE.interim = t; voiceRender(); }  // still the current phrase
-  } catch (e) { toast(e.message, true); }
+    if (session === VOICE.session && VOICE.seg && VOICE.seg.id === seg.id) { VOICE.interim = t; voiceRender(); }  // still the current phrase
+  } catch (e) { if (session === VOICE.session) voiceFail(e.message); }
+  if (session !== VOICE.session) return;
   VOICE.busy = false;
   voicePump();
 }
+// The whisper server can't be reached or failed: say so once, keep the text you have, and give the
+// message box back, instead of trying every phrase in turn while the box stays locked.
+function voiceFail(msg) {
+  if (VOICE.failed) return;
+  VOICE.failed = msg || "the whisper server didn't answer";
+  VOICE.finals = []; VOICE.busy = false; VOICE.interim = "";
+  toast("Voice input stopped: " + VOICE.failed, true);
+  if (VOICE.on) voiceStop();
+}
+// How long the box waits for the last phrases after you stop: the server's own time limit, and a little
+// more.  It's measured by the clock, as a background tab runs timers late.
+const voiceWaitMs = () => ((STATE?.speech?.timeout_s || 60) + 10) * 1000;
+const voiceCancelTitle = () => `Turning your words into text. ${onTouch() ? "Tap" : "Click"} to cancel.`;
+// While it transcribes, the mic button (or Esc) cancels: the box comes back at once with the text so far
+function voiceCancel() { if (!VOICE.on && VOICE.area) VOICE.cancel = true; }
 async function voiceStart(btn, area, key) {
   if (VOICE.on || VOICE.starting || VOICE.area) return;  // one microphone at a time, also on a double click
   VOICE.starting = true;
@@ -119,7 +141,7 @@ async function voiceStart(btn, area, key) {
   node.onaudioprocess = (e) => { if (VOICE.on) voiceFrame(new Float32Array(e.inputBuffer.getChannelData(0))); };
   src.connect(node); node.connect(VOICE.ctx.destination);
   Object.assign(VOICE, { on: true, key: key || "", gone: 0, btn, area, started: Date.now(), seg: null, pre: [], noise: 0.003, finals: [],
-                         texts: [], interim: "", busy: false, lastSend: 0,
+                         texts: [], interim: "", busy: false, lastSend: 0, session: VOICE.session + 1, failed: "", cancel: false,
                          prefix: area.value.slice(0, area.selectionStart), suffix: area.value.slice(area.selectionEnd) });
   area.readOnly = true;
   btn.classList.add("recording");
@@ -139,17 +161,19 @@ async function voiceStop() {
   clearInterval(VOICE.timer);
   VOICE.stream.getTracks().forEach((t) => t.stop());
   VOICE.ctx.close();
-  VOICE.btn.disabled = true;
-  VOICE.btn.title = "Turning your words into text";
+  VOICE.btn.title = voiceCancelTitle();
   VOICE.btn.onVoice?.();
   voiceCloseSegment();
-  for (let i = 0; i < 1200 && (VOICE.busy || VOICE.finals.length); i++) await new Promise((r) => setTimeout(r, 50));
+  const until = Date.now() + voiceWaitMs();
+  while ((VOICE.busy || VOICE.finals.length) && !VOICE.cancel && !VOICE.failed && Date.now() < until) await new Promise((r) => setTimeout(r, 50));
+  VOICE.session++;  // what's still on its way belongs to this recording, which ends here
+  VOICE.busy = false; VOICE.finals = [];
   const { btn, area } = VOICE;  // a message box drawn again meanwhile took over (voiceAdopt)
   const end = voiceRender();
   area.setSelectionRange(end, end);
   area.readOnly = false; area.focus();
   area.dispatchEvent(new Event("input"));
-  btn.disabled = false; btn.classList.remove("recording"); btn.title = "Talk";
+  btn.classList.remove("recording"); btn.title = "Talk";
   VOICE.area = null;
   btn.onVoice?.();  // done: an empty box may offer Stop again
 }
@@ -166,7 +190,8 @@ function micIcon() {  // a line icon like the phone's bottom bar
 function micButton(area, onVoice, key = "") {
   const b = el("button", { type: "button", class: "round mic", title: "Talk", "aria-label": "Talk" }, micIcon());
   b.onVoice = onVoice;
-  b.addEventListener("click", () => (VOICE.on ? voiceStop() : voiceStart(b, area, key)));  // any mic stops the recording
+  // any mic stops the recording, or cancels the transcribing that follows it
+  b.addEventListener("click", () => (VOICE.on ? voiceStop() : VOICE.area ? voiceCancel() : voiceStart(b, area, key)));
   b.hidden = !STATE?.speech?.enabled;
   if (key && VOICE.area && VOICE.key === key && !VOICE.area.isConnected) voiceAdopt(b, area);
   return b;
@@ -177,5 +202,5 @@ function voiceAdopt(btn, area) {
   area.readOnly = true;
   voiceRender();
   if (VOICE.on) { btn.classList.add("recording"); btn.title = onTouch() ? "Stop recording" : "Stop recording (Esc)"; }
-  else { btn.disabled = true; btn.classList.add("recording"); btn.title = "Turning your words into text"; }
+  else { btn.classList.add("recording"); btn.title = voiceCancelTitle(); }
 }

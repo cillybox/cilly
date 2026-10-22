@@ -1196,6 +1196,7 @@ document.addEventListener("keydown", (e) => {
   else if (e.key === "Escape") {
     if (SWITCHER) closeSwitcher();
     else if (typeof VOICE !== "undefined" && VOICE.on) voiceStop();
+    else if (typeof VOICE !== "undefined" && VOICE.area) voiceCancel();
     else closePop();
   }
 });
