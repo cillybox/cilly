@@ -55,7 +55,7 @@ Walked against `tools/harness.py --seed` and `--fresh`, with local Playwright sc
 
 ### 4. Hover and focus feedback is inconsistent (hover/focus)
 - Screen: `states-sheet-d` (rest, hover, focus for nine controls), `s-composer-focus-full`.
-- Seen: Stop button, model chip, state pill and Isolated badge show no hover change. Sidebar rows get a fill, tabs only change text colour. Focus is a white 2px ring that follows the shape (pill, rounded rectangle), but on tabs it is a hard square, and the composer and text inputs use a different language (1px lavender border). Disabled Send is nearly invisible against the composer.
+- Seen: The model chip and Isolated badge showed no hover change, and the Stop button and state pill only a barely visible one (surface to surface-2, and a 15% brightness step). Sidebar rows get a fill, tabs only change text colour. Focus is a white 2px ring that follows the shape (pill, rounded rectangle), but on tabs it is a hard square, and the composer and text inputs use a different language (1px lavender border). Disabled Send is nearly invisible against the composer.
 - Mobbin: not applicable. Static screens do not show hover or focus states, so no reference was searched for this item.
 - Fix: one hover rule for every pill-shaped control (`--surface-2` fill, same 120 ms), one focus style (chosen by the user, see `focus-options.png`, option C): no outline, a one-step darkening overlay plus a 1px inset ring in `--accent-line`, with the radius from the element, used for tabs, inputs and the composer too. Raise the disabled Send contrast to the `.btn:disabled` colours.
 
