@@ -127,7 +127,7 @@ All sizes are `round(calc(Npx * var(--text-scale)), var(--text-step))` so themes
 
 ## Layout
 
-Fixed-width left sidebar (agents, inbox, settings links) beside a single main column. At 767px and below the sidebar becomes a drawer over the content with a 44px left rail. Layout switches to one column under 640px (`.mode-cards`, `.paired-cols`). Spacing is a loose 4/6/8/12/16px rhythm.
+Fixed-width left sidebar (agents, inbox, settings links) beside a single main column. At 767px and below the phone layout takes over: a bottom bar replaces the sidebar, the sidebar becomes a drawer, and forms go to one column (`.mode-cards`, `.paired-cols`). Spacing is a loose 4/6/8/12/16px rhythm.
 
 ## Elevation & Depth
 

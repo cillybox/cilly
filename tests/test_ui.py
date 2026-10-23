@@ -8,7 +8,7 @@ import shutil
 import subprocess
 import unittest
 
-PHONE_MQ = "(max-width: 640px), (max-height: 500px) and (pointer: coarse)"  # keep in step with static/style.css and PHONE_QUERY in app.js
+PHONE_MQ = "(max-width: 767px), (max-height: 500px) and (pointer: coarse)"  # keep in step with static/style.css and PHONE_QUERY in app.js
 
 STATIC = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "cilly", "static")
 FILES = ["app.js", "agent.js", "ask.js", "inbox.js", "viewer.js", "projects.js", "mobile.js", "setup.js", "voice.js", "pages.js"]
@@ -98,7 +98,7 @@ class UiTests(unittest.TestCase):
           const a = { id: "a1", name: "x", state: "ready", asks: [] };
           STATE = { role: "owner", agents_list: [a], egress_ports: [443] };
           INBOX.items = [{ kind: "research", key: "req:a1:r1", agent: "a1", text: "How?", research_agent: "r", title: "How?" }];
-          window.matchMedia = (q) => ({ matches: q.includes("640") });
+          window.matchMedia = (q) => ({ matches: q.includes("767") });
           AV = { id: "a1", c: { asks: new Node("div") } };
           renderAsks(a);
           const search = (n) => n.className?.split(" ").includes("ask-acts") ? n : (n.kids || []).map(search).find(Boolean);
@@ -2160,7 +2160,7 @@ class UiTests(unittest.TestCase):
                     media.pop()
             else:
                 at.append(m.start())
-                phone_only &= any("max-width: 640px" in q for _, q in media)
+                phone_only &= any("max-width: 767px" in q for _, q in media)
         self.assertTrue(at)
         self.assertTrue(phone_only)
 
@@ -2940,7 +2940,7 @@ class StyleTokenTests(unittest.TestCase):
         self.assertEqual([c for c in re.findall(r"rgba?\([^)]*\)", rest) if not c.startswith("rgba(0, 0, 0,")], [])
 
     def test_touch_screens_get_44_px_targets(self):
-        block = re.search(r"@media \(pointer: coarse\), \(max-width: 640px\) \{(.*?)\n\}", self.css, re.S).group(1)
+        block = re.search(r"@media \(pointer: coarse\), \(max-width: 767px\) \{(.*?)\n\}", self.css, re.S).group(1)
         grown = re.search(r":is\(([^)]*)\)::after", block).group(1)  # one list of small controls whose target grows around them
         for sel in (".chip", ".link", ".fb-sort"):
             self.assertIn(sel, grown)

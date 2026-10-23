@@ -164,7 +164,7 @@ function imageSelect(value, onPick, profile) {  // "" = the default image for th
   s.addEventListener("change", () => onPick(s.value));
   return s;
 }
-const PHONE_QUERY = "(max-width: 640px), (max-height: 500px) and (pointer: coarse)";  // narrow, or a phone on its side; keep in step with style.css
+const PHONE_QUERY = "(max-width: 767px), (max-height: 500px) and (pointer: coarse)";  // narrow, or a phone on its side; keep in step with style.css
 const isPhone = () => window.matchMedia(PHONE_QUERY).matches;
 // GitHub accounts (a token each) that have a repository ticked, the default first, and the one an agent gets:
 // the one it was given while that one still has the repository, else the default

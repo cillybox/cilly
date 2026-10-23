@@ -1,4 +1,4 @@
-// cilly UI: phones (640px and narrower). One screen at a time: a bottom bar for the
+// cilly UI: phones (767px and narrower). One screen at a time: a bottom bar for the
 // top-level views (Agents, Inbox, Pull requests, More) instead of the sidebar, and the
 // inbox as a page instead of a popover. Everything else is the same views, restyled.
 "use strict";

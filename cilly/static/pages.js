@@ -470,6 +470,7 @@ VIEWS.policy = {
       P.tab = key;
       for (const [k, node] of Object.entries(P.panels)) node.hidden = k !== key;
       P.tabs.replaceChildren(...POLICY_TABS.map(([k, label]) => el("button", { class: "tab" + (k === key ? " on" : ""), type: "button", role: "tab", "aria-selected": String(k === key), onclick: () => P.showTab(k) }, label)));
+      P.tabs.querySelector(".tab.on")?.scrollIntoView({ block: "nearest", inline: "nearest" });
     };
     inner.append(P.tabs, P.failed, ...Object.values(P.panels));
     P.showTab(P.tab || "behavior");
