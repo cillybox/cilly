@@ -2020,7 +2020,9 @@ function thisPcSection() {
     }, "large");
     toggle.disabled = !sv.available;
     toggle.setAttribute("aria-label", "Start when you log in");
-    box.replaceChildren(...hostChecks(render),
+    const miss = hostProblems();
+    box.replaceChildren(el("div", { class: miss.length ? "warn" : "muted" }, miss.length ? `Missing: ${miss.join(", ")}.` : "Everything required is in place."),
+      ...hostChecks(render),
       el("div", { class: "row" }, el("button", { class: "btn small", onclick: async () => { await checkHostAgain(); render(); } }, "Check again")),
       el("label", { class: "card row nowrap" }, el("div", { class: "grow stack none" }, el("span", { class: "title" }, "Start when you log in"),
         el("span", { class: "muted small pretty" }, !sv.available ? "Needs systemd running your session."

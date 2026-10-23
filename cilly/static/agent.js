@@ -2200,11 +2200,11 @@ function renderResearch(a) {
     if (["pending", "failed"].includes(r.state)) acts.append(
       el("button", { class: "btn small", onclick: () => review(`req:${a.id}:${r.id}`) }, "Review"),
       el("button", { class: "btn small", onclick: () => reqAction(a, r.id, "dismiss") }, "Deny"),
-      el("button", { class: "btn small accent", onclick: () => reqAction(a, r.id, "approve") }, "Approve"));
+      el("button", { class: "btn small primary", onclick: () => reqAction(a, r.id, "approve") }, "Approve"));
     if (r.delivery && r.research_agent && r.state === "delivered") acts.append(  // the findings came back: the same three choices
       el("button", { class: "btn small", onclick: () => review(`fin:${r.research_agent}:${r.delivery}`) }, "Review"),
       el("button", { class: "btn small", onclick: () => archiveFindings(r.research_agent, r.delivery, "Dismissed") }, "Dismiss"),
-      el("button", { class: "btn small accent", onclick: () => forward(r.research_agent, r.delivery, a.id, true) }, "Forward"));
+      el("button", { class: "btn small primary", onclick: () => forward(r.research_agent, r.delivery, a.id, true) }, "Forward"));
     else if (r.delivery && r.research_agent) {
       const open = viewerOpen(r.research_agent, r.delivery);
       acts.append(el("button", { class: "btn small", onclick: () => { toggleViewer(r.research_agent, r.delivery, () => { SIGS.research = null; renderResearch(a); }); } }, open ? "Hide findings" : "View findings"));

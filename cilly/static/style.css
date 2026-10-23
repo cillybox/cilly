@@ -1357,9 +1357,9 @@ pre.block.cols { columns: 2; }
 .repo-meta { white-space: nowrap; }
 .repo-list > .list-row { border-top: 1px solid var(--line); border-bottom: 0; }
 .image-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.image-card { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border: 1px solid var(--line); border-left-width: 3px; border-radius: 10px; background: var(--surface-soft); min-width: 0; }
-.image-card.coding { border-left-color: var(--accent-fg); }
-.image-card.research { border-left-color: var(--warn); }
+.image-card { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft); min-width: 0; }
+.image-card.coding { border-color: color-mix(in srgb, var(--accent-fg) 45%, var(--line)); }
+.image-card.research { border-color: color-mix(in srgb, var(--warn) 45%, var(--line)); }
 .image-kind { font-size: round(calc(13px * var(--text-scale)), var(--text-step)); }
 .image-card.coding .image-kind { color: var(--accent-fg); }
 .image-card.research .image-kind { color: var(--warn); }
@@ -1368,8 +1368,9 @@ pre.block.cols { columns: 2; }
 .image-row { border-top: 1px solid var(--line); }
 .image-line { display: grid; grid-template-columns: minmax(0, 2.4fr) 90px 120px minmax(0, 1.4fr) 36px; align-items: center; gap: 12px; padding: 10px 12px 10px 16px; }
 .image-colhead { color: var(--fg-5); font-size: round(calc(13px * var(--text-scale)), var(--text-step)); border-top: 0; padding-top: 12px; padding-bottom: 8px; }
-.image-name-cell { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 0; border: 0; background: none; color: inherit; text-align: left; cursor: pointer; }
+.image-name-cell { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; min-width: 0; padding: 0; border: 0; background: none; color: inherit; text-align: left; cursor: pointer; }
 .image-name-cell .title { font-weight: 500; white-space: nowrap; }
+.image-name-cell .dim, .image-name-cell .tag { white-space: nowrap; }
 .image-meta { display: contents; }
 .image-cell { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .image-more { padding: 0 16px 12px 52px; }

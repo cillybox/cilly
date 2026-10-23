@@ -37,11 +37,16 @@ typography:
     fontFamily: "Geist Mono, ui-monospace, monospace"
     fontSize: "13px"
 rounded:
+  hair: "3px"
+  tiny: "4px"
   xs: "6px"
   sm: "8px"
   md: "10px"
   lg: "12px"
   xl: "14px"
+  panel: "16px"
+  sheet: "20px"
+  dialog: "22px"
   pill: "999px"
 components:
   button:
@@ -138,7 +143,7 @@ Flat by default; layers are tonal. Shadows appear only for overlays: the mobile 
 
 ## Shapes
 
-Soft and rounded: pills (999px) for buttons, tags and badges; 10px inputs; 12-14px cards and menus; 6-8px for small tags and rows. The Terminal style squares this off.
+Soft and rounded: pills (999px) for buttons, tags and badges; 10px inputs; 12-14px cards and menus; 16px phone cards and popovers; 20-22px sheets and dialogs; 6-8px for small tags and rows; 3-4px for scroll thumbs and keycaps. The Terminal style squares this off.
 
 ## Components
 
