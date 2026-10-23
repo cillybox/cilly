@@ -1424,6 +1424,7 @@ pre.block.cols { columns: 2; }
 .new-main .composer { max-width: none; }
 .new-main .composer textarea { font-size: round(calc(15px * var(--text-scale)), var(--text-step)); line-height: 1.55; }
 .new-main .composer .bottom { column-gap: 6px; }  /* the chat composer's wider gap would push the mic onto its own line */
+.new-seg { align-self: flex-start; }
 .new-options { flex: 1 1 300px; max-width: 380px; min-width: 0; }
 @media (min-width: 900px) and (min-height: 600px) { .new-options { position: sticky; top: 16px; max-height: calc(100vh - 150px); max-height: calc(100dvh - 150px); overflow-y: auto; } }  /* in reach while the left column scrolls */
 .new-adv .opt-sec { padding-inline: 0; }

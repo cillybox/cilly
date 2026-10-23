@@ -2035,7 +2035,7 @@ class UiTests(unittest.TestCase):
 
     def test_the_new_agent_prompt_keeps_the_mic_on_its_row(self):
         pages, css = read(os.path.join(STATIC, "pages.js")), read(os.path.join(STATIC, "style.css"))
-        self.assertIn('P.profileSeg, P.repo, P.name, el("div", { class: "acts" }, P.attachBtn, P.files, P.mic)', pages)
+        self.assertIn('P.repo, P.name, el("div", { class: "acts" }, P.attachBtn, P.files, P.mic)', pages)
         self.assertIn(".new-main .composer .bottom { column-gap: 6px; }", css)
 
     def test_the_phone_review_bar_says_approve_and_send(self):

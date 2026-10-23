@@ -132,14 +132,14 @@ VIEWS.new = {
         el("span", { class: "muted" }, "It boots in its own VM with your policy and egress allowlist.")),
       el("div", { class: "new-cols" },
         el("div", { class: "new-main" },
+          el("div", { class: "new-seg" }, P.profileSeg),
           P.box = el("div", { class: "composer" }, P.attachRow, P.ta,
-            el("div", { class: "bottom" }, P.profileSeg, P.repo, P.name, el("div", { class: "acts" }, P.attachBtn, P.files, P.mic))),
-          P.checklist,
+            el("div", { class: "bottom" }, P.repo, P.name, el("div", { class: "acts" }, P.attachBtn, P.files, P.mic))),
           P.projectRow = el("div", { class: "row new-project" }, el("span", { class: "muted" }, "Project"), P.project,
             P.projectNote = el("span", { class: "muted grow ellipsis" })),
           P.accountRow = el("div", { class: "row new-project" }, el("span", { class: "muted" }, "GitHub account"), P.account,
             P.accountNote = el("span", { class: "muted grow ellipsis" })),
-          P.researchNote, lifecycle, P.stopCard),
+          P.researchNote, lifecycle, P.stopCard, P.checklist),  // setup left over comes last, so the choices above stay in view
         P.options))),
     el("div", { class: "new-foot" }, el("div", { class: "new-foot-inner" }, P.hint, P.cancel, P.create)));
   },
