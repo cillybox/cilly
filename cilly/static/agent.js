@@ -193,7 +193,7 @@ function renderHead(a) {
   const blocked = blockedOf(a).length;
   if (editingIn(AV.head) || !changed("head", [a.id, a.name, a.state, statusText(a), statusShort(a), waitingOn(a)[1], ownLine(a), a.repo, a.branch, a.pr, a.profile,
     ok, blocked, a.running, isPhone(), a.context?.used, a.context?.window])) return;
-  const where = isResearch(a) ? "open web, no repository" : a.repo ? `${a.repo} · ${a.branch || "?"}` : "no repository, scratch folder";
+  const where = isResearch(a) ? "open web, no repository" : a.repo ? `${a.repo}${a.branch ? " · " + a.branch : ""}` : "no repository, scratch folder";
   const prn = (a.pr || "").match(/\/pull\/(\d+)$/);
   const badge = el("button", { class: "sandbox-badge" + (ok === false ? " bad" : ""), "aria-haspopup": "dialog", title: "Sandbox" },
     el("span", { class: "dot " + (ok === false ? "s-failed" : ok ? "s-ready" : "s-stopped") }),
@@ -204,7 +204,7 @@ function renderHead(a) {
   const branch = !isResearch(a) && a.repo && a.branch;
   badge.addEventListener("click", () => openPop(badge, sandboxPop(now()), { width: 320 }));
   const stopped = isStopped(a);
-  const ss = el("button", { class: "btn small head-ss " + (stopped ? "start" : "stop") }, stopped ? "Start" : "Stop");
+  const ss = el("button", { class: "btn small head-ss " + (stopped ? "start" : "stop") }, stopped ? "Start VM" : "Stop VM");
   ss.disabled = a.state === "stopping";
   ss.addEventListener("click", () => stopped ? openPop(ss, startPop(now(), ss), { width: 420 }) : stopAgent(now()));
   const more = el("button", { class: "icon-btn", title: "More", "aria-label": "More actions" }, "···");
@@ -715,7 +715,7 @@ function agentMenu(a) {
   if (isPhone()) {  // the header and composer have no room for these on a phone
     const c = composerState(a.id);
     const ctx = contextOf(a);  // the header has no room for the meter next to the state on a phone
-    box.append(item(stopped ? "Start…" : "Stop", "", a.state !== "stopping", () => stopped ? openPop(AV.head, startPop(a, AV.head)) : stopAgent(a)),
+    box.append(item(stopped ? "Start VM…" : "Stop VM", "", a.state !== "stopping", () => stopped ? openPop(AV.head, startPop(a, AV.head)) : stopAgent(a)),
       ctx ? item(`Context ${ctx.pct}%`, ctx.text, true, () => openPop(AV.head, contextPop(a))) : "",
       item("Model", modelLabel(a), true, () => openPop(AV.head, modelPop(a))));
     if (!isResearch(a) && a.repo) box.append(el("div", { class: "menu-item" }, el("span", { class: "grow" }, "New branch", el("span", { class: "sub" }, "for the next message")),

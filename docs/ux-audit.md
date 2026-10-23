@@ -43,7 +43,7 @@ Walked against `tools/harness.py --seed` and `--fresh`, with local Playwright sc
 
 ### 3. Agent header: two "Stop"s, a destructive item beside them, and a stray "?" (buried and misplaced actions)
 - Screens: `b-coder-more-actions-d`, `b-coder-more-actions-m`, `b-agent-coder-chat-d`.
-- Seen: `Stop` (stops the VM) sits next to the ⋯ menu whose first row is `Stop this task`. The phone sheet lists both. `Delete agent` is in the same list as Rename, one row under a disabled `Reset to clean`. Disabled rows say why in a grey subtitle (good) but are mixed in with live ones. The header line reads `me/plugin-lib · ?` for an agent with no branch yet.
+- Seen: `Stop` (stops the VM) sits next to the ⋯ menu whose first row is `Stop this task`. The phone sheet lists both. `Delete agent` is in the same list as Rename, one row under a disabled `Reset to clean` (it is already divided off and opens a confirm dialog, which Phase 2 keeps). Disabled rows say why in a grey subtitle (good) but are mixed in with live ones. The header line reads `me/plugin-lib · ?` for an agent with no branch yet.
 - Mobbin (Deep Search "more actions overflow menu with delete item separated at the bottom in red", Web; plus Quicken from the settings search):
   - Quicken, row overflow menu with `Delete account` in red at the bottom, set apart from Edit and Mark as closed: https://mobbin.com/screens/d92b8b4d-1174-41a5-97d8-fb8d026df6d4.
   - Clerk, "Delete application" asks you to type the app's name to confirm, with a warning line: https://mobbin.com/screens/71516c8f-ca28-4b68-bca8-01b6ea6e46ec.

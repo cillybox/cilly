@@ -535,7 +535,7 @@ function pairedLists() {
 // what to allow for a blocked request: the host, or host:port when the port isn't one every site gets
 function siteFor(d) { return (STATE?.egress_ports || [443]).includes(d.port) ? d.host : `${d.host}:${d.port}`; }
 const siteLabel = (site) => (/:\d+$/.test(site) ? `Allow ${site}` : "Allow");
-const allowLabel = (d) => siteLabel(siteFor(d));
+const allowLabel = (d) => `Allow for ${agentName(d.agent)}`;  // Allow in the inbox and the ask bar is for that agent only
 // A paired device may only allow the ports every site gets. The server checks it too.
 const PORTS_NOTE = "Other ports can only be allowed from the panel on your PC.";
 function mayAllow(site) { const m = /:(\d+)$/.exec(site); return isOwner() || !m || (STATE?.egress_ports || [443]).includes(+m[1]); }
