@@ -41,6 +41,10 @@ body { margin: 0; background: var(--bg); color: var(--fg); font: round(calc(14px
        -webkit-font-smoothing: antialiased; overflow: hidden; }
 a { color: var(--accent-fg); text-decoration: none; }
 @media (hover: hover) { a:hover { color: var(--accent-link-hover); } }
+/* One focus look for every control: a darker fill and a thin accent ring, drawn inside so rounded and clipped controls keep it */
+:is(button, a, summary, select, [role="button"], [role="tab"], [tabindex="0"]):focus-visible { outline: none; box-shadow: inset 0 0 0 999px rgba(0, 0, 0, .22), inset 0 0 0 1px var(--accent-line); }
+.tab:focus-visible { border-radius: 8px; }
+.tab.on:focus-visible { box-shadow: inset 0 0 0 999px rgba(0, 0, 0, .22), inset 0 0 0 1px var(--accent-line), inset 0 -2px 0 var(--fg); }
 code, .mono { font-family: var(--mono); }
 [hidden] { display: none !important; }
 button, input, select, textarea { font: inherit; color: inherit; }
@@ -433,7 +437,6 @@ details.adv > summary::-webkit-details-marker { display: none; }
 @media (hover: hover) { .queued-card .btn.small:hover { background: var(--line-strong); } }
 .tool-line.clickable { cursor: pointer; border-radius: 6px; margin: 0 -6px; padding: 1px 6px; }
 @media (hover: hover) { .tool-line.clickable:hover { background: var(--surface); } }
-.tool-line.clickable:focus-visible { outline: 1px solid var(--accent-line); }
 .tool-wrap { display: flex; flex-direction: column; gap: 6px; }
 .tool-detail { display: flex; flex-direction: column; gap: 6px; margin-left: 2px; }
 .tool-detail pre { margin: 0; padding: 8px 12px; border-radius: 8px; background: var(--editor-bg); font: round(calc(12px * var(--mono-scale)), var(--text-step))/1.6 var(--mono); white-space: pre-wrap; word-break: break-word; max-height: 360px; overflow: auto; }
