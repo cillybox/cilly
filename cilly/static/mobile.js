@@ -118,35 +118,6 @@ VIEWS.inbox = {
     P.list.replaceChildren(inboxFilter(() => { SIGS.mInbox = null; VIEWS.inbox.update(); }), ...paged("inbox", inboxItems(), inboxCard));
   },
 };
-// Same safe one-tap actions as the desktop list: Allow means this agent only, a research
-// question is approved here only when it's short enough to read in full, and findings are
-// never forwarded from here (both buttons open the review page).
-function inboxCard(it) {
-  const [label, cls] = KIND[it.kind];
-  const btn = (text, fn, primary) => el("button", { class: "btn" + (primary ? " primary" : ""), onclick: (e) => { e.stopPropagation(); fn(); } }, text);
-  const open = () => it.kind === "questions" ? answerAsk(it) : review(it.key);
-  let acts;
-  if (it.kind === "questions") acts = [btn("Answer", open, true)];
-  else if (it.kind === "network") acts = it.fixable === false ? [btn("Dismiss", () => dismissDenial(it))]
-    : canAllow(it) ? [btn("Deny", () => dismissDenial(it)), btn(allowLabel(it), () => allowHost(it, siteFor(it), "agent"), true)]
-    : [btn("Dismiss", () => dismissDenial(it))];
-  else if (it.kind === "research") acts = [btn("Deny", () => dismissRequest(it)),
-    it.research_agent && it.text.length <= SHORT_Q ? btn("Approve", () => approveRequest(it), true) : btn("Review", open, true)];
-  else if (it.kind === "note") acts = isOwner() ? [btn("Deny", () => decideNote(it, false)), btn("Add note", () => decideNote(it, true), true)] : [btn("Review", open)];
-  else if (it.kind === "device") acts = [btn("Deny", () => decideDevice(it, false)), btn("Review", open, true)];  // pair where the whole code shows
-  else acts = [btn("Dismiss", () => dismissFindings(it)), btn("Review", open, true)];  // forwarding is on the review page
-  const card = el("div", { class: "m-card", role: "button", tabindex: 0, onclick: open },
-    el("div", { class: "row nowrap small" }, el("span", { class: "tag " + cls }, label), el("span", { class: "muted ellipsis grow" }, itemFrom(it)),
-      el("span", { class: "dim" }, ago(it.created))),
-    el("div", { class: "title" }, listTitle(it)),
-    // a question you can approve from here is shown whole, like on the desktop
-    shownInFull(it) || it.kind === "note" ? el("div", { class: "q-full" }, it.text) : el("div", { class: "muted clamp2" }, itemSummary(it)),
-    allowNote(it),
-    el("div", { class: "m-acts" }, acts));
-  card.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target === card) open(); });
-  return card;
-}
-
 // ---- More ----
 VIEWS.more = {
   mount(main) {

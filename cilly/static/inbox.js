@@ -87,7 +87,7 @@ function openInbox() {
   // anchored to the right of the sidebar (or the left edge when it's hidden)
   const sb = $("sidebar"), sbVisible = sb.offsetWidth > 0;
   node.style.left = (sbVisible ? sb.getBoundingClientRect().right + 8 : window.innerWidth > 900 ? 56 : 12) + "px";
-  node.style.top = "64px";
+  node.style.top = "116px";  // below the page header and its tabs
   POP.inbox = true;
   renderInboxList(node.querySelector(".inbox-list"));
   pollInbox();
@@ -99,40 +99,37 @@ function renderInboxList(list) {
   if (!INBOX.loaded) { list.replaceChildren(el("div", { class: "muted" }, "Loading…")); return; }
   if (!INBOX.items.length) { list.replaceChildren(emptyInbox()); return; }
   const filter = inboxFilter(() => renderInboxList(list));
-  list.replaceChildren(filter, ...paged("inbox", inboxItems(), (it) => {
-    const [label, cls] = KIND[it.kind];
-    const acts = el("div", { class: "row" }, it.kind === "questions" ? el("span", { class: "grow" })
-      : el("button", { class: "link grow", onclick: () => review(it.key) }, "Review"));
-    if (it.kind === "questions") {
-      acts.append(el("button", { class: "btn small primary", onclick: () => answerAsk(it) }, "Answer"));
-    } else if (it.kind === "research") {
-      acts.append(el("button", { class: "btn small", onclick: () => dismissRequest(it) }, "Deny"));
-      if (it.research_agent && it.text.length <= SHORT_Q) acts.append(el("button", { class: "btn small primary", onclick: () => approveRequest(it) }, "Approve"));
-    } else if (it.kind === "device") {  // paired only from the review page, which shows the whole code
-      acts.append(el("button", { class: "btn small", onclick: () => decideDevice(it, false) }, "Deny"));
-    } else if (it.kind === "note") {
-      if (isOwner()) acts.append(el("button", { class: "btn small", onclick: () => decideNote(it, false) }, "Deny"),
-        el("button", { class: "btn small primary", onclick: () => decideNote(it, true) }, "Add note"));
-      else acts.append(el("span", { class: "muted" }, "Add it from your PC"));
-    } else if (it.kind === "network" && it.fixable === false) {
-      acts.append(el("button", { class: "btn small", onclick: () => dismissDenial(it) }, "Dismiss"));
-    } else if (it.kind === "network") {
-      acts.append(el("button", { class: "btn small", onclick: () => dismissDenial(it) }, "Deny"),
-        canAllow(it) ? el("button", { class: "btn small primary", onclick: () => allowHost(it, siteFor(it), "agent") }, allowLabel(it)) : "");
-    } else {
-      acts.append(el("button", { class: "btn small", onclick: () => dismissFindings(it) }, "Dismiss"));
-    }
-    return el("div", { class: "inbox-item" },
-      el("div", { class: "row nowrap" }, el("span", { class: "tag " + cls }, label), el("span", { class: "muted ellipsis grow" }, itemFrom(it)),
-        el("span", { class: "muted" }, ago(it.created))),
-      el("div", { class: "title" }, listTitle(it)),
-      allowNote(it),
-      it.kind === "note" ? el("div", { class: "q-full" }, it.text)
-        : it.kind === "research" && it.text.length <= SHORT_Q ? el("div", { class: "q-full" }, it.text) : el("div", { class: "muted ellipsis" }, itemSummary(it)),
-      it.kind === "research" && it.text.length > SHORT_Q ? el("div", { class: "warn" }, "This question is long, so approve it from the review page, where you can read all of it.") : "",
-      it.kind === "research" && !it.research_agent ? el("div", { class: "warn" }, "No research agent is linked yet. Pick one on the review page.") : "",
-      acts);
-  }));
+  list.replaceChildren(filter, ...paged("inbox", inboxItems(), inboxCard));
+}
+// The inbox card, in the popover and on the phone's page. One-tap actions are limited: Allow means this agent only, a research
+// question is approved here only when it's short enough to read in full, and findings are
+// never forwarded from here (both buttons open the review page).
+function inboxCard(it) {
+  const [label, cls] = KIND[it.kind];
+  const btn = (text, fn, primary) => el("button", { class: "btn" + (primary ? " primary" : ""), onclick: (e) => { e.stopPropagation(); fn(); } }, text);
+  const open = () => it.kind === "questions" ? answerAsk(it) : review(it.key);
+  let acts;
+  if (it.kind === "questions") acts = [btn("Answer", open, true)];
+  else if (it.kind === "network") acts = it.fixable === false ? [btn("Dismiss", () => dismissDenial(it))]
+    : canAllow(it) ? [btn("Deny", () => dismissDenial(it)), btn(allowLabel(it), () => allowHost(it, siteFor(it), "agent"), true)]
+    : [btn("Dismiss", () => dismissDenial(it))];
+  else if (it.kind === "research") acts = [btn("Deny", () => dismissRequest(it)),
+    it.research_agent && it.text.length <= SHORT_Q ? btn("Approve", () => approveRequest(it), true) : btn("Review", open, true)];
+  else if (it.kind === "note") acts = isOwner() ? [btn("Deny", () => decideNote(it, false)), btn("Add note", () => decideNote(it, true), true)] : [btn("Review", open)];
+  else if (it.kind === "device") acts = [btn("Deny", () => decideDevice(it, false)), btn("Review", open, true)];  // pair where the whole code shows
+  else acts = [btn("Dismiss", () => dismissFindings(it)), btn("Review", open, true)];  // forwarding is on the review page
+  const card = el("div", { class: isPhone() ? "m-card" : "inbox-item", role: "button", tabindex: 0, onclick: open },
+    el("div", { class: "row nowrap small" }, el("span", { class: "tag " + cls }, label), el("span", { class: "muted ellipsis grow" }, itemFrom(it)),
+      el("span", { class: "dim" }, ago(it.created))),
+    el("div", { class: "title" }, listTitle(it)),
+    // a question you can approve from here is shown whole, like on the desktop
+    shownInFull(it) || it.kind === "note" ? el("div", { class: "q-full" }, it.text) : el("div", { class: "muted clamp2" }, itemSummary(it)),
+    allowNote(it),
+    it.kind === "research" && it.text.length > SHORT_Q ? el("div", { class: "warn" }, "This question is long, so approve it from the review page, where you can read all of it.") : "",
+    it.kind === "research" && !it.research_agent ? el("div", { class: "warn" }, "No research agent is linked yet. Pick one on the review page.") : "",
+    el("div", { class: "m-acts" }, acts));
+  card.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target === card) open(); });
+  return card;
 }
 
 // ---- actions ----

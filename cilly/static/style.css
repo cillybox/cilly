@@ -727,9 +727,12 @@ ul.files { list-style: none; margin: 0; padding: 0; max-height: 260px; overflow-
 /* inbox */
 .sb-inbox { font-weight: 500; color: var(--fg); }
 .sb-inbox .count-badge { margin-left: auto; }
-.inbox-pop { border-radius: 16px; gap: 6px; max-height: calc(100vh - 90px); }
+.inbox-pop { border-radius: 16px; gap: 6px; max-height: calc(100vh - 140px); }
 .inbox-list { display: flex; flex-direction: column; gap: 4px; }
-.inbox-item { display: flex; flex-direction: column; gap: 6px; padding: 12px 4px; border-top: 1px solid var(--line-strong); }
+.inbox-item { display: flex; flex-direction: column; gap: 6px; padding: 12px 4px; border-top: 1px solid var(--line-strong); cursor: pointer; }
+@media (hover: hover) { .inbox-item:hover { background: var(--surface-2); } }
+.inbox-item .m-acts { display: flex; justify-content: flex-end; }
+.inbox-item .m-acts .btn { min-height: 0; padding: 4px 12px; font-size: round(calc(13px * var(--text-scale)), var(--text-step)); }
 .inbox-item:first-child { border-top: 0; }
 .inbox-item .title { font-weight: 500; }
 .q-full { white-space: pre-wrap; word-break: break-word; font-size: round(calc(14px * var(--text-scale)), var(--text-step)); color: var(--fg-2); max-height: 12em; overflow-y: auto; }
@@ -737,7 +740,7 @@ ul.files { list-style: none; margin: 0; padding: 0; max-height: 260px; overflow-
 .card-body { padding: 12px 16px; }
 pre.block.flat { border: 0; border-radius: 0; }
 .review-actions { position: sticky; bottom: 0; background: var(--bg); padding: 12px 0; }
-.inbox-item .link.grow, .review > .link { text-align: left; align-self: flex-start; }
+.review > .link { text-align: left; align-self: flex-start; }
 .context-body { max-height: 320px; overflow-y: auto; }
 
 /* first-run setup */
