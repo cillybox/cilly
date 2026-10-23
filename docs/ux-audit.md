@@ -126,3 +126,21 @@ Walked against `tools/harness.py --seed` and `--fresh`, with local Playwright sc
 7. Visual drift (item 11)
 
 Nothing is committed beyond the initial import. `DESIGN.md` and this file are uncommitted on branch `ux-audit`.
+
+## Status after Phase 2
+
+| Item | Status |
+|---|---|
+| 1 Inbox and asks | Done: one shared card, popover opens below the tabs. Inline chat cards stay as history (pending ones are shortened). |
+| 2 Settings structure | Done on the PC (left rail) and the phone list. Claude policy keeps its own page and four tabs, with a fade on phones. |
+| 3 Agent header and menu | Done: Stop VM / Start VM, no stray "?". Stop task stays in the menu. Delete already had a confirm. |
+| 4 Hover and focus | Done: one focus style, hover on chips, badge, Stop and the state pill. |
+| 5 Save model | Done: the save bar shows only while something is edited, names it, and has Discard. |
+| 6 Sandbox and Allow scope | Done: Allow reads "Allow for <agent>". The strip has no "Everywhere..." option. |
+| 7 Phone tabs and header | Tabs already scrolled the active one into view and faded at the edge. Policy tabs now fade too. The header was not shortened. |
+| 8 Tablet and first run | Done: the phone layout runs to 767px. First run on a phone already showed the setup. |
+| 9 New agent | Done: type switch on top, leftover setup last, the VM fields collapsed behind a one-line summary. |
+| 10 Phone file viewer | Done: the name and details sit whole under the back and actions row. Copy and Download are still text. |
+| 11 Visual drift | Done: Phosphor icons in the phone bar, radii documented, no side-border cards. |
+
+Before and after shots for every theme: `compare-<theme>-desktop.png` and `compare-<theme>-phone.png` in the outbox, with each full-size shot under `compare/<theme>/`.
