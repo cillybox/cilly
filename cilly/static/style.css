@@ -745,6 +745,7 @@ ul.files { list-style: none; margin: 0; padding: 0; max-height: 260px; overflow-
 pre.block.flat { border: 0; border-radius: 0; }
 .review-actions { position: sticky; bottom: 0; background: var(--bg); padding: 12px 0; }
 .review > .link { text-align: left; align-self: flex-start; }
+.pr-errors .link { align-self: flex-start; }
 .context-body { max-height: 320px; overflow-y: auto; }
 
 /* first-run setup */

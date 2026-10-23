@@ -677,7 +677,7 @@ VIEWS.prs = {
     P.dest = el("input", { class: "input mono", placeholder: "/home/you/agent-builds", value: UI.buildDest || "", spellcheck: false });
     P.dest.addEventListener("input", () => { UI.buildDest = P.dest.value; });
     P.list = el("div", { class: "card flush" }, el("div", { class: "list-row muted" }, "loading…"));
-    P.errors = el("div", { class: "err" });
+    P.errors = el("div", { class: "warn stack tight pr-errors" });  // a missing optional token is a note, not a failure
     P.repo = el("select", { class: "select" });
     P.ref = el("input", { class: "input", placeholder: "Branch or PR number", "aria-label": "Branch or PR number" });
     P.art = el("input", { class: "input", placeholder: "Artifact (optional)", "aria-label": "Artifact" });
@@ -707,8 +707,9 @@ VIEWS.prs = {
         ghLink(p.url, "Open"),
         isOwner() ? el("button", { class: "btn small", onclick: () => fetchBuild(p.repo, { pr: p.number }) }, "Fetch build") : ""))
         : [el("div", { class: "list-row muted" }, "No open agent PRs. They show up here once an agent opens one.")]));
-      P.errors.textContent = r.errors.map(prError).join("\n");
-    } catch (e) { P.list.replaceChildren(loadFailed("the pull requests", e, VIEWS.prs.load)); P.errors.textContent = ""; }
+      P.errors.replaceChildren(...r.errors.map((e) => el("div", {}, prError(e))),
+        isOwner() && r.errors.some((e) => /Paste a token/.test(e)) ? el("button", { class: "link", onclick: () => openSettings("secrets") }, "Open Secrets") : "");
+    } catch (e) { P.list.replaceChildren(loadFailed("the pull requests", e, VIEWS.prs.load)); P.errors.replaceChildren(); }
   },
 };
 async function fetchBuild(repo, ref) {

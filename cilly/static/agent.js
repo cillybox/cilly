@@ -2199,7 +2199,7 @@ function renderResearch(a) {
     const acts = el("div", { class: "row" });
     if (["pending", "failed"].includes(r.state)) acts.append(
       el("button", { class: "btn small", onclick: () => review(`req:${a.id}:${r.id}`) }, "Review"),
-      el("button", { class: "btn small", onclick: () => reqAction(a, r.id, "dismiss") }, "Dismiss"),
+      el("button", { class: "btn small", onclick: () => reqAction(a, r.id, "dismiss") }, "Deny"),
       el("button", { class: "btn small accent", onclick: () => reqAction(a, r.id, "approve") }, "Approve"));
     if (r.delivery && r.research_agent && r.state === "delivered") acts.append(  // the findings came back: the same three choices
       el("button", { class: "btn small", onclick: () => review(`fin:${r.research_agent}:${r.delivery}`) }, "Review"),
