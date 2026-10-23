@@ -636,9 +636,11 @@ class ServerTests(unittest.TestCase):
         ag.procs["qemu"] = mock.Mock(poll=lambda: None)  # running
         self.addCleanup(ag.procs.pop, "qemu")
         ag.meta["state"] = "ready"
+        from cilly import github as GH
         sent = []
         with mock.patch.object(self.app.manager, "new_task", lambda aid, payload, **kw: sent.append(payload) or {"id": "t1"}), \
-                mock.patch.object(self.app.manager, "write_tokens", lambda a: None):
+                mock.patch.object(self.app.manager, "write_tokens", lambda a: None), \
+                mock.patch.object(GH, "repo_overview", lambda repo, tok: {"push": True, "commits": 1, "created_at": "", "pushed_at": ""}):
             ag.tls = {"ca": "x", "hosts": {"api.anthropic.com": {}}}  # started without GitHub's certificates
             st, _, b = self.req("POST", f"/api/agents/{ag.id}/attach-repo", {"repo": "me/attached"}, headers=self.auth())
             self.assertEqual(st, 400, b)
@@ -651,6 +653,51 @@ class ServerTests(unittest.TestCase):
         self.assertTrue(sent[0]["env"]["GH_TOKEN"].startswith("ghp_cilly"))
         gh = [t for t in ag.tokens if t["value"] == "ghp_REALATTACH"][0]
         self.assertEqual(gh["github"], {"repo": "me/attached", "push": {"agent": ag.id, "create": {"kinds": list(C.BRANCH_KINDS)}}})
+
+    def test_attach_pre_checks_push_access_and_an_empty_repo(self):
+        """A read-only or empty-no-README repo fails now, with the reason, instead of queuing a task
+        that rolls the repo back to a scratch folder a moment later."""
+        import copy
+        from cilly import github as GH
+        old = copy.deepcopy(self.app.cfg())
+        self.addCleanup(lambda: self.app.set_cfg(old))
+        cfg = copy.deepcopy(old)
+        cfg["tokens"]["at"] = {"description": "", "repos": ["me/attached"], "secret": {}}
+        self.app.set_cfg(cfg)
+        self.app.secrets.set_pasted("token:at", "ghp_REALATTACH")
+        ag = self.app.manager.create(name="scratch", mode="persistent", repo=None, agent="claude", cpus=1, memory_mb=1024,
+                                     auto_stop=False, branch_prefix="agent/")
+        self.addCleanup(lambda: self.app.manager.delete(ag.id))
+        ag.procs["qemu"] = mock.Mock(poll=lambda: None)  # running
+        self.addCleanup(ag.procs.pop, "qemu")
+        ag.meta["state"] = "ready"
+        ag.tls = {"ca": "x", "hosts": {h: {} for h in ("github.com", "api.github.com", "api.anthropic.com")}}
+        sent = []
+
+        def attach(overview):
+            with mock.patch.object(self.app.manager, "new_task", lambda aid, payload, **kw: sent.append(payload) or {"id": "t1"}), \
+                    mock.patch.object(self.app.manager, "write_tokens", lambda a: None), \
+                    mock.patch.object(GH, "repo_overview", lambda repo, tok: overview):
+                return self.req("POST", f"/api/agents/{ag.id}/attach-repo", {"repo": "me/attached"}, headers=self.auth())
+
+        st, _, b = attach({"push": False, "commits": 10, "created_at": "", "pushed_at": ""})  # token can only read it
+        self.assertEqual(st, 400, b)
+        self.assertIn("can't push", json.loads(b)["error"])
+        st, _, b = attach({"push": True, "commits": 0, "created_at": "", "pushed_at": ""})  # empty, no README
+        self.assertEqual(st, 400, b)
+        self.assertIn("empty", json.loads(b)["error"])
+        self.assertEqual((sent, ag.meta.get("repo")), ([], None))  # nothing queued, still a scratch agent
+        st, _, b = attach({"push": True, "commits": 1, "created_at": "", "pushed_at": ""})  # a README, pushable: fits
+        self.assertEqual(st, 200, b)
+        self.assertEqual((len(sent), ag.meta.get("repo")), (1, "me/attached"))
+        # GitHub being unreachable doesn't block the attach: the VM reports any failure instead
+        ag.set(repo=None, repo_in_scratch=False, branch=None)
+        sent.clear()
+        with mock.patch.object(self.app.manager, "new_task", lambda aid, payload, **kw: sent.append(payload) or {"id": "t2"}), \
+                mock.patch.object(self.app.manager, "write_tokens", lambda a: None), \
+                mock.patch.object(GH, "repo_overview", mock.Mock(side_effect=GH.GitHubError("down"))):
+            st, _, b = self.req("POST", f"/api/agents/{ag.id}/attach-repo", {"repo": "me/attached"}, headers=self.auth())
+        self.assertEqual((st, len(sent)), (200, 1), b)
 
     def test_themes_and_fonts(self):
         import base64

@@ -2036,6 +2036,16 @@ class App:
         tok_name = C.token_for_repo(cfg, repo, ag.meta.get("account"))
         tok = self._secret(f"token:{tok_name}", cfg["tokens"][tok_name].get("secret", {}),
                            f"the GitHub token for {repo}")
+        try:  # fail now, with the reason, rather than queue a task that rolls back when the push is refused
+            fit = GH.repo_overview(repo, tok)
+        except GH.GitHubError:
+            fit = None  # GitHub couldn't be asked: let the attach try, and the VM reports any failure
+        if fit and not fit["push"]:
+            raise ApiError(f"The “{tok_name}” account's token can't push to {repo}. Give it write access "
+                           "on GitHub, then try again.")
+        if fit and fit["commits"] == 0:
+            raise ApiError(f"{repo} is empty, so there's no default branch to build on. Add a README on "
+                           "GitHub first, then attach.")
         branch = self.manager.next_branch(ag.id, str(body.get("pr_title") or "") or ag.meta["name"])
         # set now so the PR link from the VM is accepted; put back if it fails
         ag.set(repo=repo, repo_in_scratch=True, branch=branch)

@@ -1960,6 +1960,19 @@ function renderTasks(a) {
 }
 
 // ---- files: the browser, Export… and Attach repository… ----
+// An attach task that fails rolls the repo back to a scratch folder on the host, so without this the
+// header would just quietly revert.  Toast the reason when one we watched turns failed (not on first
+// load, so old failures stay quiet).
+const ATTACH_SEEN = {};  // attach task id -> state last seen
+function watchAttach() {
+  for (const a of STATE?.agents_list || [])
+    for (const t of a.tasks || []) {
+      if (!t.attach) continue;
+      if (ATTACH_SEEN[t.id] && ATTACH_SEEN[t.id] !== "failed" && t.state === "failed")
+        toast(`Couldn't attach ${t.attach}: ${failReason(t) || "the attach didn't finish"}`, true);
+      ATTACH_SEEN[t.id] = t.state;
+    }
+}
 const EXPORTS_SEEN = {};  // export id -> state last shown
 // git runs commands named in a repository's config, so the panel never copies one out of a VM
 const leftOut = (n) => `Left out ${n} Git folder${n === 1 ? "" : "s"}.`;

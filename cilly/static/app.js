@@ -576,6 +576,7 @@ async function loadState() {
     STATE = await api("GET", "/api/state");
   } catch (e) { if (!REJECTED) connectionBar(true); return; }
   connectionBar(false);
+  watchAttach();  // say why an attach failed, even if you've navigated away from its agent
   if (!ROUTED) { route(); return; }
   applyLook();
   renderSidebar();
