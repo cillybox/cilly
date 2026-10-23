@@ -1270,7 +1270,15 @@ pre.block.cols { columns: 2; }
 .set-tabs { display: flex; flex-wrap: nowrap; gap: 0; overflow-x: auto; white-space: nowrap; margin: 0 -8px; scrollbar-width: none; }
 .set-tabs::-webkit-scrollbar { display: none; }
 .set-tabs .tab { padding: 10px 8px; }
-.tab-sep { flex: none; width: 1px; margin: 12px 8px; background: var(--line-strong); }
+/* Settings on the PC: sections down the left, the open one on the right */
+.set-cols { flex: 1; min-height: 0; display: flex; }
+.set-rail { flex: none; width: 212px; padding: 14px 12px; border-right: 1px solid var(--line); overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.set-cols + .save-bar { padding-inline: calc(212px + 36px) 36px; }  /* in line with the open section, not the rail */
+.set-group { padding: 16px 10px 4px; font-size: round(calc(12px * var(--text-scale)), var(--text-step)); color: var(--fg-5); }
+.set-group:first-child { padding-top: 2px; }
+.set-item { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border: 0; border-radius: 8px; background: none; color: var(--fg-2); text-align: left; cursor: pointer; font-size: round(calc(14px * var(--text-scale)), var(--text-step)); }
+@media (hover: hover) { .set-item:hover { background: var(--hover); } }
+.set-item.on { background: var(--surface-2); color: var(--fg); }
 .tab-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--err); }
 .tab-dot.warn { background: var(--warn); }
 .set-body { padding: 28px 24px 80px; display: flex; flex-direction: column; gap: 20px; }  /* Devices shows its Notifications panel too */

@@ -61,7 +61,7 @@ Walked against `tools/harness.py --seed` and `--fresh`, with local Playwright sc
 
 ### 5. Save model is inconsistent and sometimes wrong (extra clicks, trust)
 - Screens: `a-set-local-models-d`, `a-set-network-d`, `b-project-d`, `a-policy-m`.
-- Seen: Local models says "Changes here are saved right away" while a sticky `Save settings` bar sits under it. Network says "Running agents pick up changes once you save". Project has a `Save` per textarea (Instructions, Allowed sites). Claude policy has `Save and apply live` with an `Up to date (v1)` state (good, the best of the four). No page shows whether there are unsaved edits.
+- Seen: Local models says "Changes here are saved right away" while a sticky `Save settings` bar sits under it. Network says "Running agents pick up changes once you save". Project has a `Save` per textarea (Instructions, Allowed sites). Claude policy has `Save and apply live` with an `Up to date (v1)` state (good, the best of the four). Settings did track unsaved edits (a dot on the tab and a small note), but the Save button stayed visible on every tab, including the ones that save themselves.
 - Mobbin (Deep Search "unsaved changes bar with discard and save buttons", Web): no persistent save bar came back, only unsaved-changes dialogs.
   - Salesforce, "Save changes to this segment?" with three clear choices, `Cancel`, `Discard`, `Save`: https://mobbin.com/screens/ff8c986b-e12e-4bee-8b31-53740c045b5f.
   - Squarespace, "Exit without saving?" dialog: https://mobbin.com/screens/9825b5a3-da36-4ae9-8a15-7c9d78f08f1b.

@@ -727,7 +727,8 @@ async function fetchBuild(repo, ref) {
 const SETTINGS_TABS = [["secrets", "Secrets"], ["github", "GitHub access"], ["models", "Local models"],
   ["network", "Network"], ["images", "VM images"], ["vm", "VM limits"], ["host", "This PC"],
   ["speech", "Speech to text"], ["devices", "Devices"], ["appearance", "Appearance"], ["advanced", "Advanced"]];
-const TAB_GROUP_STARTS = new Set(["network", "speech", "advanced"]);  // Connections, Runtime, Interface, Advanced: a divider before each after the first
+const SETTINGS_GROUPS = [["Accounts", ["secrets", "github", "models"]], ["Network and VMs", ["network", "images", "vm", "host"]],
+  ["Panel", ["speech", "devices", "appearance", "advanced"]]];  // the rail's sections on the PC, the lists on a phone
 const openSettings = (tab) => go("settings", { settingsTab: tab, sec: tab });  // a tab on the PC, its own screen on a phone
 VIEWS.settings = {
   mount(main) {
@@ -746,13 +747,13 @@ VIEWS.settings = {
       P.main.replaceChildren(el("div", { class: "page" }, P.body));
     } else {
       if (!SETTINGS_TABS.some(([k]) => k === UI.settingsTab)) UI.settingsTab = "secrets";
-      P.tabs = el("div", { class: "set-tabs", role: "tablist" });
+      P.rail = el("div", { class: "set-rail", role: "tablist", "aria-orientation": "vertical", "aria-label": "Settings sections" });
       P.body = el("div", { class: "set-body" }, VIEWS.settings.pending());
-      P.saveNote = el("span", { class: "warn small", hidden: true }, "Unsaved changes");
-      P.main.replaceChildren(el("div", { class: "set-head" }, el("div", { class: "set-head-inner" },
-        el("h1", { class: "page-title" }, "Settings"), P.tabs)),
-      el("div", { class: "page" }, P.body),
-      el("div", { class: "save-bar" }, P.saveNote, el("button", { class: "btn primary", onclick: VIEWS.settings.save }, "Save settings")));
+      P.saveText = el("span", { class: "warn small grow" });
+      P.saveNote = el("div", { class: "save-bar", hidden: true }, P.saveText, el("button", { class: "btn ghost", onclick: VIEWS.settings.load }, "Discard"),
+        el("button", { class: "btn primary", onclick: VIEWS.settings.save }, "Save settings"));  // only while something is edited
+      P.main.replaceChildren(el("div", { class: "set-head bare" }, el("div", { class: "set-head-inner" }, el("h1", { class: "page-title" }, "Settings"))),
+        el("div", { class: "set-cols" }, P.rail, el("div", { class: "page" }, P.body)), P.saveNote);
     }
     if (P.c) VIEWS.settings.place();
   },
@@ -775,8 +776,9 @@ VIEWS.settings = {
     const before = [...P.dirtyTabs].join();
     P.dirtyTabs = new Set(Object.keys(now).filter((k) => now[k] !== P.base[k]));
     if (P.saveNote) P.saveNote.hidden = !P.dirtyTabs.size;
+    if (P.saveText) P.saveText.textContent = P.dirtyTabs.size ? `Unsaved changes in ${SETTINGS_TABS.filter(([k]) => P.dirtyTabs.has(k)).map(([, label]) => label).join(", ")}` : "";
     if (P.footNote) P.footNote.textContent = P.dirtyTabs.has(UI.sec) ? "Unsaved changes" : "";
-    if (!P.phone && P.tabs && [...P.dirtyTabs].join() !== before) VIEWS.settings.renderTabs();
+    if (!P.phone && P.rail && [...P.dirtyTabs].join() !== before) VIEWS.settings.renderRail();
   },
   update() {
     const P = VIEWS.settings.p;
@@ -801,34 +803,18 @@ VIEWS.settings = {
     UI.settingsTab = key;
     for (const [k, node] of Object.entries(P.panels)) node.hidden = k !== key && !(k === "notifications" && key === "devices");  // one tab on the PC
     if (key === "github") P.github?.fetch();
-    VIEWS.settings.renderTabs();
+    VIEWS.settings.renderRail();
     lookBar();
   },
-  // One line of tabs: the ones that don't fit go under More, but the open one always shows
-  renderTabs() {
+  renderRail() {
     if (VIEWS.settings.p.phone) return;  // a phone has the list instead
     const P = VIEWS.settings.p, missing = secretList(P.secrets || {}, P.c).some((s) => s.state.missing);
-    const tab = ([k, label]) => el("button", { class: "tab" + (k === UI.settingsTab ? " on" : ""), role: "tab",
+    const item = ([k, label]) => el("button", { class: "set-item" + (k === UI.settingsTab ? " on" : ""), role: "tab",
       "aria-selected": String(k === UI.settingsTab), onclick: () => VIEWS.settings.showTab(k) },
-    label, k === "secrets" && missing ? el("span", { class: "tab-dot", title: "A secret is missing" }) : "", P.dirtyTabs?.has(k) ? el("span", { class: "tab-dot warn", title: "Unsaved changes" }) : "");
-    const fits = (shown, rest) => {
-      const more = rest.length ? el("button", { class: "tab", "aria-haspopup": "menu", onclick: () => openPop(more, el("div", { class: "menu" },
-        ...rest.map(([k, label]) => el("button", { class: "menu-item", onclick: () => { closePop(); VIEWS.settings.showTab(k); } }, label)))) }, "More ", foldMark(true)) : "";
-      P.tabs.replaceChildren(...shown.flatMap((t, i) => (i && TAB_GROUP_STARTS.has(t[0]) ? [el("span", { class: "tab-sep", "aria-hidden": "true" }), tab(t)] : [tab(t)])), more);
-      return P.tabs.scrollWidth <= P.tabs.clientWidth + 1;
-    };
-    let n = SETTINGS_TABS.length;
-    while (!fits(...VIEWS.settings.splitTabs(n)) && n > 1) n--;
-    if (!P.tabsObserved && window.ResizeObserver) {  // a wider or narrower window: split them again
-      P.tabsObserved = true;
-      let w = 0;
-      new ResizeObserver(() => { if (P.tabs.isConnected && P.tabs.clientWidth !== w) { w = P.tabs.clientWidth; VIEWS.settings.renderTabs(); } }).observe(P.tabs);
-    }
-  },
-  splitTabs(n) {  // the first n tabs, with the open one swapped in for the last when it's further along
-    const shown = SETTINGS_TABS.slice(0, n), open = SETTINGS_TABS.findIndex(([k]) => k === UI.settingsTab);
-    if (open >= n && n > 0) shown[n - 1] = SETTINGS_TABS[open];
-    return [shown, SETTINGS_TABS.filter((t) => !shown.includes(t))];
+    el("span", { class: "grow" }, label), k === "secrets" && missing ? el("span", { class: "tab-dot", title: "A secret is missing" }) : "",
+    P.dirtyTabs?.has(k) ? el("span", { class: "tab-dot warn", title: "Unsaved changes" }) : "");
+    P.rail.replaceChildren(...SETTINGS_GROUPS.flatMap(([name, keys]) => [el("div", { class: "set-group", role: "presentation" }, name),
+      ...keys.map((k) => item(SETTINGS_TABS.find(([t]) => t === k)))]));
   },
   async load() {
     const P = VIEWS.settings.p;
@@ -944,12 +930,11 @@ VIEWS.settings = {
     const paired = el("span");  // filled in when the list of devices comes
     P.body.replaceChildren(el("h1", { class: "m-h1" }, "Settings"),
       el("div", { class: "m-set-list" }, row("secrets", "Secrets", s.secrets, s.missing ? "err" : "", s.missing),
-        row("github", "GitHub access", s.github), row("network", "Network", s.network), row("models", "Local models", s.models),
-        row("images", "VM images", s.images), row("vm", "VM limits", s.vm),
+        row("github", "GitHub access", s.github), row("models", "Local models", s.models)),
+      el("div", { class: "m-set-list" }, row("network", "Network", s.network), row("images", "VM images", s.images), row("vm", "VM limits", s.vm),
         row("host", "This PC", s.host, hostProblems().length ? "err" : "")),
       el("div", { class: "m-set-list" }, row("devices", "Devices", paired), row("notifications", "Notifications", s.notifications), row("speech", "Speech to text", s.speech),
-        row("appearance", "Appearance", s.appearance)),
-      el("div", { class: "m-set-list" }, row("policy", "Claude policy", s.policy), row("advanced", "Advanced", "JSON")),
+        row("appearance", "Appearance", s.appearance), row("advanced", "Advanced", "JSON")),
       el("div", { class: "sb-host m-host" }, ...hostStatus()));
     api("GET", "/api/devices").then((r) => { paired.textContent = `${r.devices.length} paired`; }).catch(() => {});
   },
@@ -1255,7 +1240,7 @@ function renderSecrets() {
     el("div", { class: "card flush" }, el("div", { class: "sec-summary row nowrap" }, el("span", { class: "grow muted" }, secretSummary(list)), locked ? unlock : ""), rows,
       list.length ? "" : el("div", { class: "list-row muted" }, "No secrets yet. They show up here once a token, a route or an MCP server needs one.")),
     saveSwitch((on) => { P.saveSecrets = on; }));
-  VIEWS.settings.renderTabs();
+  VIEWS.settings.renderRail();
 }
 // How it's stored and when it was set (times from the host; never any part of the value)
 function storedText(st, t, cmd) {
@@ -1532,7 +1517,7 @@ async function renderSecretsSoon() {
   const P = VIEWS.settings.p;
   if (!P?.secretsBox) return;
   try { const S = await api("GET", "/api/settings"); P.secrets = S.secrets; P.c.model_servers = S.config.model_servers; } catch { return; }
-  renderSecrets(); VIEWS.settings.renderTabs();
+  renderSecrets(); VIEWS.settings.renderRail();
 }
 // Settings → Local models: the model servers you run, each with its models and a test, and a form to add one
 function modelsTab(c) {

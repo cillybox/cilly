@@ -65,8 +65,8 @@
   & .chip.on { border-color: var(--accent-line); }
   & .tab.on { box-shadow: inset 0 -2px 0 var(--accent-fg); }
   & .tab.on:focus-visible { box-shadow: inset 0 0 0 999px rgba(0, 0, 0, .22), inset 0 0 0 1px var(--accent-line), inset 0 -2px 0 var(--accent-fg); }
-  & .sb-row.active, & .sb-link.active { background: var(--surface); box-shadow: inset 2px 0 0 var(--accent-fg); }
-  & :is(.sb-row, .sb-link).active:focus-visible { box-shadow: inset 0 0 0 999px rgba(0, 0, 0, .22), inset 0 0 0 1px var(--accent-line), inset 2px 0 0 var(--accent-fg); }
+  & .sb-row.active, & .sb-link.active, & .set-item.on { background: var(--surface); box-shadow: inset 2px 0 0 var(--accent-fg); }
+  & :is(.sb-row, .sb-link).active:focus-visible, & .set-item.on:focus-visible { box-shadow: inset 0 0 0 999px rgba(0, 0, 0, .22), inset 0 0 0 1px var(--accent-line), inset 2px 0 0 var(--accent-fg); }
   & .input:focus, & .editor:focus, & input:focus-visible, & textarea:focus-visible { outline: 1px solid var(--accent-fg); outline-offset: -1px; }
   & .switch.on { background: var(--accent-fg); }
   & .seg { background: transparent; border: 1px solid var(--line-strong); }
