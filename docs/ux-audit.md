@@ -87,7 +87,7 @@ Walked against `tools/harness.py --seed` and `--fresh`, with local Playwright sc
 
 ### 8. Tablet widths and first run on a phone (mobile)
 - Screens: `t-700-agent`, `setup-1-m`.
-- Seen: between 641 and 767 px there is no sidebar and no bottom bar, only a small sidebar icon with a dot at top left (the sidebar collapses at 767, the phone layout starts at 640). On a fresh install a 390 px phone lands on New agent; the six-step setup is not shown.
+- Seen: between 641 and 767 px there is no sidebar and no bottom bar, only a small sidebar icon with a dot at top left (the sidebar collapses at 767, the phone layout starts at 640). (Checked again on a fresh harness: a 390 px phone does open the six-step setup. The earlier "lands on New agent" came from a harness whose setup I had already skipped.)
 - Mobbin (Deep Search "onboarding setup checklist card with progress bar and steps to finish", Web): HoneyBook ("Let's start step-by-step", 6/7 completed bar, each step a row with a chevron), Remote ("2 tasks remaining", 67% complete, finished rows ticked green), Klaviyo ("Let's get started", 1/4 guides completed, steps with a `Manage` button on the right), Apollo (setup steps with `Start` or `Completed` per row). Search URL: https://mobbin.com/search/apps/web?content_type=screens&q=onboarding+setup+checklist+card+with+progress+bar+and+steps+to+finish&mode=deep
   - Tablet breakpoint: not applicable, no Mobbin reference.
 - Fix: switch to the bottom bar at 767 so one breakpoint covers both. On phones, show the Finish setting up checklist at the top of Agents until done, linking to each step (host steps say "do this on the PC").

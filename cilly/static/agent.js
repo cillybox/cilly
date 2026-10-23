@@ -1082,7 +1082,7 @@ function taskBlock(a, t, x) {  // your message, what the agent did and how it en
   for (const r of x.reqs) put("r" + r.id, el("div", { class: "req-card" },
     el("div", { class: "top" }, el("span", { class: "accent-fg" }, "Research request"), el("span", { class: "muted" }, r.name),
       el("span", { class: "grow" }), el("span", { class: "tag " + ({ delivered: "ok", pending: "warn", failed: "err" }[r.state] || "") }, r.state)),
-    el("div", { class: "q" }, r.text.slice(0, 2000))));
+    el("div", { class: "q" + (r.state === "pending" ? " clamp2" : "") }, r.text.slice(0, 2000))));  // asked below too, so a pending one stays short
   for (const r of x.asks) put("a" + r.id, askCard(r));
   for (const d of x.dels) put("d" + d.id, el("div", { class: "meta-line" }, `Findings ${d.id} from ${agentName(d.research_agent)} delivered to /inbox/${d.id}`));
   for (const d of x.denied) put(`x${d.host}:${d.port}`, el("div", { class: "meta-line err" }, `You denied network access to ${d.host}${d.port === 443 ? "" : ":" + d.port}`));

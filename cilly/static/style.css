@@ -318,7 +318,7 @@ details.adv > summary::-webkit-details-marker { display: none; }
 .agent-sub .where { font: round(calc(12px * var(--mono-scale)), var(--text-step)) var(--mono); color: var(--fg-5); min-width: 0; }
 .state-pill { gap: 7px; padding: 3px 12px 3px 8px; border: 0; cursor: pointer; flex: 0 1 auto; min-width: 0; }
 .state-pill .full-words, .state-pill .short-words { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-@media (hover: hover) { .state-pill:hover { filter: brightness(1.15); } }
+@media (hover: hover) { .state-pill:hover { filter: brightness(1.35); } .btn.head-ss:hover { background: var(--surface-3); } }
 @media (hover: hover) { .chip:not(.static, .on):hover, .sandbox-badge:hover { background: var(--surface-2); } .chip.on:hover { filter: brightness(1.15); } }
 .state-pill.st-waiting { background: color-mix(in srgb, var(--warn) 12%, transparent); }
 .state-pill.st-failed { background: color-mix(in srgb, var(--err) 12%, transparent); }

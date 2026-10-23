@@ -20,6 +20,13 @@
   & #sb-prs::before { --i: url("phosphor/git-pull-request.svg"); }
   & #sb-policy::before { --i: url("phosphor/scroll.svg"); }
   & #sb-settings::before { --i: url("phosphor/gear.svg"); }
+  /* the phone's bottom bar */
+  & .m-ico > svg { display: inline-block; width: 22px; height: 22px; background: currentColor; -webkit-mask: var(--i) center / 22px 22px no-repeat; mask: var(--i) center / 22px 22px no-repeat; }
+  & .m-ico > svg > * { display: none; }
+  & #m-nav-agents .m-ico > svg { --i: url("phosphor/squares-four.svg"); }
+  & #m-nav-inbox .m-ico > svg { --i: url("phosphor/tray.svg"); }
+  & #m-nav-prs .m-ico > svg { --i: url("phosphor/git-pull-request.svg"); }
+  & #m-nav-more .m-ico > svg { --i: url("phosphor/dots-three.svg"); }
   & .round.send::before { --i: url("phosphor/arrow-up.svg"); }
   & .round[aria-label="Attach files"]::before { --i: url("phosphor/paperclip.svg"); }
   & .round[aria-label="Refresh"]::before { --i: url("phosphor/arrow-clockwise.svg"); }

@@ -96,12 +96,13 @@ VIEWS.new = {
       el("span", { class: "muted small pretty" }, "Copies ~/outbox into a new subfolder here before its disk is deleted")), P.keep), P.keepDest);
     // no host-folder injection from a phone: the folder browser needs a desktop (Start from there to give it one)
     P.injectBox = opt("Host folder", "Copied in read-only at /inject. Optional.", P.inject.node);
-    P.options = el("div", { class: "card flush new-options" }, phone ? "" : el("div", { class: "opt-head" }, "Virtual machine"),
-      opt("Resources", "", el("div", { class: "row nowrap opt-pair" },
+    const vmOpts = [opt("Resources", "", el("div", { class: "row nowrap opt-pair" },
         el("label", { class: "field grow" }, el("span", { class: "label" }, "vCPUs"), P.cpus),
         el("label", { class: "field grow" }, el("span", { class: "label" }, "Memory (MiB)"), P.mem),
         el("label", { class: "field grow" }, el("span", { class: "label" }, "Disk (GB)"), P.disk))),
-      P.modelOpt = opt("Model", "Claude's, or one from your model servers", P.modelBox), opt("VM image", "Which toolchains it has", P.imageBox), opt("Route", "How its traffic leaves", P.routeBox),
+      P.modelOpt = opt("Model", "Claude's, or one from your model servers", P.modelBox), opt("VM image", "Which toolchains it has", P.imageBox), opt("Route", "How its traffic leaves", P.routeBox)];
+    P.options = el("div", { class: "card flush new-options" }, phone ? "" : el("div", { class: "opt-head" }, "Virtual machine"),
+      ...(phone ? vmOpts : [el("details", { class: "adv opt-sec new-adv" }, el("summary", {}, "Resources, model, image and route", P.vmCount = el("span", { class: "dim" })), ...vmOpts)]),
       P.extras = el("details", { class: "adv opt-sec new-adv" }, el("summary", {}, "Tools and files", P.extrasCount = el("span", { class: "dim" })),
         opt("MCP servers", "", P.mcp), P.pluginsOpt = opt("Plugins", "Installed in its VM before its first task", P.plugins),
         P.skillsOpt = opt("Skills", "Your own, added in its VM before its first task", P.skills), P.prBox, phone ? "" : P.injectBox),
@@ -185,6 +186,7 @@ VIEWS.new = {
     P.disk.max = STATE.vm_defaults.max_disk_gb || 200;
     (P.repoRow || P.repo).hidden = research; P.researchNote.hidden = !research; P.injectBox.hidden = research || !isOwner(); P.autoRow.hidden = research;
     P.stopCard.hidden = P.autoRow.hidden && P.keepBox.hidden;
+    if (P.vmCount) P.vmCount.textContent = ` ${P.cpus.value} vCPU, ${Math.round((+P.mem.value || 0) / 1024 * 10) / 10} GiB, ${P.disk.value} GB`;
     P.extrasCount.textContent = [NEW.mcp.size + NEW.plugins.size + NEW.skills.size].map((n) => (n ? ` ${n} on` : ""))[0];
     P.prBox.hidden = research || !NEW.repo;  // only an agent with a repository opens pull requests
     if (changed("newModes", [NEW.mode, research]) || force) {
