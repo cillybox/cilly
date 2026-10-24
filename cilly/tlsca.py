@@ -32,7 +32,7 @@ def openssl_binary() -> str | None:
 
 
 def check_host(host: str) -> str:
-    if not isinstance(host, str) or not HOST_RE.match(host):
+    if not isinstance(host, str) or not HOST_RE.fullmatch(host):
         raise ValueError(f"not a host name cilly makes a certificate for: {str(host)[:60]!r}")
     return host
 

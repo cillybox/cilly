@@ -41,7 +41,7 @@ def validate_files(files, max_total: int) -> tuple[list[tuple[str, str]], int]:
         if not isinstance(f, dict) or not isinstance(f.get("path"), str) or not isinstance(f.get("content"), str):
             raise HandoffError("malformed file entry")
         parts = f["path"].split("/")
-        if len(parts) > 4 or any(p in ("", ".", "..") or not _SAFE.match(p) for p in parts):
+        if len(parts) > 4 or any(p in ("", ".", "..") or not _SAFE.fullmatch(p) for p in parts):
             raise HandoffError(f"unsafe file name {f['path'][:80]!r}")
         data = f["content"].encode("utf-8", "strict")
         if "\x00" in f["content"]:

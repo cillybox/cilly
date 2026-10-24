@@ -861,7 +861,7 @@ def parse_model_url(url) -> dict:
 
 # REST endpoints (after /repos/{repo}) that can change branches, tags or the repository itself
 _CHANGES_REFS = re.compile(r"|/git/refs(?:/.*)?|/contents(?:/.*)?|/merges|/merge-upstream|/pulls/\d+/(?:merge|update-branch)"
-                           r"|/releases(?:/.*)?|/branches(?:/.*)?|/tags(?:/.*)?|/rulesets(?:/.*)?|/transfer")
+                           r"|/dispatches|/releases(?:/.*)?|/branches(?:/.*)?|/tags(?:/.*)?|/rulesets(?:/.*)?|/transfer")
 
 
 GITHUB_HOSTS = ("github.com", "api.github.com")

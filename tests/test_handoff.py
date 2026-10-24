@@ -601,5 +601,12 @@ class HandoffTests(unittest.TestCase):
         self.assertEqual({d["host"] for d in self.app.api_denials(ca.id, {})["denials"]}, {"evil.example.net", "example.com"})
 
 
+class NameTests(unittest.TestCase):
+    def test_trailing_newline_is_not_a_safe_name(self):
+        from cilly import handoff
+        with self.assertRaises(handoff.HandoffError):
+            handoff.validate_files([{"path": "a\n", "content": "x"}], 1000)
+
+
 if __name__ == "__main__":
     unittest.main()

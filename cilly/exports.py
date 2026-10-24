@@ -96,6 +96,8 @@ def _parts(name: str) -> list[str]:
     if name.startswith("/") or "\\" in name or "\x00" in name or len(name.encode()) > MAX_PATH:
         raise ExportError(f"unsafe path {name[:80]!r}")
     parts = [p for p in name.split("/") if p not in ("", ".")]
+    if any(unicodedata.category(c) == "Cc" for p in parts for c in p):
+        raise ExportError(f"unsafe path {name[:80]!r}")  # ESC and newlines would drive a terminal that lists the folder
     if not parts or len(parts) > MAX_DEPTH or any(p == ".." or len(p.encode()) > 255 for p in parts):
         raise ExportError(f"unsafe path {name[:80]!r}")
     return parts

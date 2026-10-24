@@ -139,6 +139,11 @@ class ExtractTests(unittest.TestCase):
                 safe_extract_tar(self.tar, self.dest, sub, max_bytes=100, max_files=10)
 
 
+    def test_control_characters_in_names_rejected(self):
+        for name in ("\x1b]0;x\x07", "line\nbreak", "a/\x7f"):
+            self.assert_rejected([{"name": name, "data": b"x"}], "unsafe path")
+
+
 class DestinationTests(unittest.TestCase):
     def test_sensitive_destinations_refused(self):
         with tempfile.TemporaryDirectory() as d:
@@ -286,6 +291,17 @@ class FolderFloodTests(unittest.TestCase):
         agent = os.path.join(self.tmp.name, "agent")
         os.mkdir(agent)
         with self.assertRaisesRegex(M.MemoryError_, "limits"):
+            M.import_memout(self.tar, agent)
+        self.assertFalse(os.path.exists(os.path.join(agent, "memory")))
+
+    def test_memory_tar_cut_short_is_rejected_not_raised(self):
+        from cilly import memory as M
+        agent = os.path.join(self.tmp.name, "agent2")
+        os.mkdir(agent)
+        make_tar(self.tar, [{"name": "projects/a.md", "data": b"x" * 5000}])
+        with open(self.tar, "r+b") as f:
+            f.truncate(700)  # the header says 5000 bytes, the disk ends sooner
+        with self.assertRaises(M.MemoryError_):
             M.import_memout(self.tar, agent)
         self.assertFalse(os.path.exists(os.path.join(agent, "memory")))
 

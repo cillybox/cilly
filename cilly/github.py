@@ -212,7 +212,7 @@ def download_artifact(repo: str, token: str | None, artifact_id: int, max_bytes:
     return path
 
 
-_SAFE_COMPONENT = re.compile(r"^[^\x00/\\]+$")
+_SAFE_COMPONENT = re.compile(r"[^\x00-\x1f\x7f-\x9f/\\]+")
 
 
 def safe_extract_zip(zip_path: str, dest_root: str, subdir: str, *, max_bytes: int, max_files: int) -> dict:
@@ -265,7 +265,7 @@ def safe_extract_zip(zip_path: str, dest_root: str, subdir: str, *, max_bytes: i
                 if name.startswith("/") or "\\" in name or "\x00" in name or len(name.encode()) > MAX_PATH:
                     raise GitHubError(f"unsafe path in artifact: {name[:80]!r}")
                 parts = [p for p in name.split("/") if p not in ("",)]
-                if any(p in (".", "..") or not _SAFE_COMPONENT.match(p) for p in parts) or not parts or len(parts) > MAX_DEPTH:
+                if any(p in (".", "..") or not _SAFE_COMPONENT.fullmatch(p) for p in parts) or not parts or len(parts) > MAX_DEPTH:
                     raise GitHubError(f"unsafe path in artifact: {name!r}")
                 entries.append((zi, parts, name.endswith("/")))
             left = git_left_out((parts, z.open(zi).read(HEAD_PEEK) if not is_dir and is_head_name(parts[-1]) else None)

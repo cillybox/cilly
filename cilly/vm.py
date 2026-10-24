@@ -1335,10 +1335,12 @@ class Manager:
             a.can_deliver = False
             for rt in readers:
                 rt.join(5)
-            self._after_stop(a)
-            shutil.rmtree(p.run_dir, ignore_errors=True)
-            _rm(p.route_file)
-            self._drop_tls(a)
+            try:
+                self._after_stop(a)
+            finally:  # the real tokens and keys go whatever the guest's memory export did
+                shutil.rmtree(p.run_dir, ignore_errors=True)
+                _rm(p.route_file)
+                self._drop_tls(a)
 
     def _after_stop(self, a: Agent) -> None:
         p = a.paths

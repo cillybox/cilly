@@ -621,5 +621,13 @@ class ProxyEndToEnd(unittest.TestCase):
             self.assertEqual(f.read().count('"action": "deny"'), 3)
 
 
+class TokenScopeTests(unittest.TestCase):
+    def test_push_held_token_cannot_dispatch_workflows(self):
+        from cilly.egress_proxy import token_allowed
+        tok = {"hosts": ["api.github.com"], "github": {"repo": "o/r", "push": {"agent": "abcdef12", "create": None}}}
+        self.assertFalse(token_allowed(tok, "api.github.com", "POST", "/repos/o/r/dispatches"))
+        self.assertTrue(token_allowed(tok, "api.github.com", "GET", "/repos/o/r"))
+
+
 if __name__ == "__main__":
     unittest.main()

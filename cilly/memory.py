@@ -61,7 +61,7 @@ def _check_name(name: str) -> list[str]:
     if len("/".join(parts).encode()) > MAX_PATH or len(parts) > MAX_DEPTH:
         raise MemoryError_(f"path longer than {MAX_PATH} bytes or deeper than {MAX_DEPTH} folders: {name[:80]!r}")
     for p in parts:
-        if p == ".." or not _SAFE.match(p):
+        if p == ".." or not _SAFE.fullmatch(p):
             raise MemoryError_(f"unsafe path component in {name!r}")
     return parts
 
@@ -125,6 +125,10 @@ def import_memout(img_path: str, agent_dir: str) -> dict:
                         if written > m.size:
                             raise MemoryError_("entry larger than declared")
                         out.write(chunk)
+    except (tarfile.TarError, EOFError) as e:  # a header that runs past the end of the disk
+        os.close(root_fd)
+        shutil.rmtree(new, ignore_errors=True)
+        raise MemoryError_(f"broken tar stream: {e}") from None
     except BaseException:
         os.close(root_fd)
         shutil.rmtree(new, ignore_errors=True)
